@@ -56,16 +56,25 @@ bash tests/test-audit.sh
 
 ## 自动漂移审计
 
-`templates/drift-audit.yml` 是纳管项目的定期审计入口。它调用私有基线仓库中的 `.github/actions/audit`，使用调用仓库自己的 `GITHUB_TOKEN`，权限精确限制为 `actions: read` 与 `contents: read`；不保存个人访问令牌，也不增加项目 secret。
+自动审计只在基线仓库的 `.github/workflows/baseline-drift-audit.yml` 中运行。纳管项目不复制 workflow，也不保存审计凭据。中央任务通过 `actions/create-github-app-token` 创建短期 GitHub App installation token，并在 Action 输入中把 token 精确限制到 `repositories.txt` 对应的四个仓库。
 
-私有基线仓库的 Actions 访问范围必须保持 `access_level=user`，即只允许 `HyxiaoGe` 自己拥有的仓库调用。接入时：
+GitHub App 不订阅 webhook 事件，不授予写权限，只配置以下 repository permissions：
 
-1. 复制 `templates/drift-audit.yml` 到项目 `.github/workflows/baseline-drift-audit.yml`。
-2. 用已经通过基线仓库真实 CI 的完整 commit SHA 替换 `PROJECT_REPLACE_BASELINE_SHA`，保留版本注释。
-3. 通过项目自身的 PR 契约测试后合并。
-4. 在默认分支首次人工触发并确认审计输出为 `PASS owner/repo`；任何 API 无权读取或结构不完整都会 fail-closed，不能把跳过当成通过。
+- `Administration: read`：读取 `master` branch protection。
+- `Actions: read`：列举 active workflows。
+- `Contents: read`：读取默认分支 workflow 与本地 Action 内容。
+- `Environments: read`：读取 Environment 和 Environment secret 名称元数据。
+- `Secrets: read`：读取 repository secret 名称元数据。
 
-模板按 Asia/Shanghai 周一凌晨安排错峰计划；GitHub 的 `schedule` 可能延迟，规则正确性以运行结论而不是精确启动分钟为准。
+基线仓库使用 repository variable `BASELINE_AUDIT_APP_CLIENT_ID` 保存 Client ID，并把私钥作为 `BASELINE_AUDIT_APP_PRIVATE_KEY` 存入 `audit` Environment；workflow 自身只声明 `contents: read`，创建短期令牌时再次显式要求上述五项 `read`。审计器只处理 secret 名称，GitHub API 和脚本都不会读取 secret 值。
+
+接入新项目时必须在同一个基线 PR 中完成三处对齐：
+
+1. 把 `owner/repo` 加入 `repositories.txt`。
+2. 把仓库名加入中央 workflow 的 `repositories` 显式列表。
+3. 把 GitHub App 安装范围扩展到该仓库。
+
+合并后在基线仓库人工触发一次 `Engineering baseline drift audit`，确认全部仓库输出 `PASS owner/repo`。任何 API 无权读取、清单不一致或结构不完整都会 fail-closed，不能把跳过当成通过。计划任务按 Asia/Shanghai 周一 02:23 运行；GitHub 的 `schedule` 可能延迟，规则正确性以运行结论为准。
 
 ## 不由模板决定的内容
 

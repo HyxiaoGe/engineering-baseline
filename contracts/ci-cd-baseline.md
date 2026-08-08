@@ -61,6 +61,8 @@
 
 - MUST：定期或在基线变更后运行只读审计；任一公共 MUST 漂移都返回非零退出码。
 - MUST：审计 active workflows、`.github/actions`、live `master` protection、`dev` Environment 以及 repo/env secret 名称边界。
+- MUST：中央自动审计使用短期 GitHub App installation token，并把 token 显式限制到 `repositories.txt` 中的仓库；不得保存个人令牌，也不得把审计凭据下发到纳管项目。
+- MUST：审计 App 只授予读取 Administration、Actions、Contents、Environments 和 Secrets 元数据所需的仓库权限，短期令牌创建步骤再次显式要求这五项 `read`；不订阅 webhook 事件，不授予写权限。
 - MUST：审计不能替代真实 PR、master 发布和运行环境验收；三者证据需要同时成立。
 - 项目扩展点：审计调度频率、通知渠道、额外仓库规则。
 
@@ -72,11 +74,12 @@
 - MUST：规则发生冲突且尚未完成公共契约迁移时，采用更严格的现有规则。
 - 项目扩展点：语言、目录边界、测试命令、本地服务策略、真实用户路径和跨仓协议。
 
-## 模板当前固定的外部 Action
+## 基线与模板当前固定的外部 Action
 
 | Action | 完整 SHA | 版本注释 |
 |---|---|---|
 | `actions/checkout` | `d23441a48e516b6c34aea4fa41551a30e30af803` | `v6` |
+| `actions/create-github-app-token` | `bcd2ba49218906704ab6c1aa796996da409d3eb1` | `v3` |
 | `actions/setup-node` | `249970729cb0ef3589644e2896645e5dc5ba9c38` | `v6` |
 | `docker/login-action` | `dbcb813823bdd20940b903addbd779551569679f` | `v4.6.0` |
 

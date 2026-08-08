@@ -226,65 +226,110 @@ PY
   fi
 }
 
-check_reusable_audit_entrypoint() {
+check_central_audit_entrypoint() {
   if ! python3 - "${ROOT_DIR}" <<'PY'
 from pathlib import Path
-import re
 import sys
 import yaml
 
 root = Path(sys.argv[1])
-action_path = root / ".github" / "actions" / "audit" / "action.yml"
-template_path = root / "templates" / "drift-audit.yml"
+workflow_path = root / ".github" / "workflows" / "baseline-drift-audit.yml"
 readme = (root / "README.md").read_text()
-action = yaml.load(action_path.read_text(), Loader=yaml.BaseLoader)
-template = yaml.load(template_path.read_text(), Loader=yaml.BaseLoader)
+maintenance = (root / "MAINTENANCE.md").read_text()
+registry = [
+    line.strip()
+    for line in (root / "repositories.txt").read_text().splitlines()
+    if line.strip() and not line.lstrip().startswith("#")
+]
 
-assert action["inputs"]["repository"]["required"] == "true"
-assert action["runs"]["using"] == "composite"
-assert len(action["runs"]["steps"]) == 1
-step = action["runs"]["steps"][0]
-assert step["shell"] == "bash"
-assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
-assert step["env"]["AUDIT_REPOSITORY"] == "${{ inputs.repository }}"
-for marker in (
-    "PyYAML==6.0.3",
-    "audit-github-baseline.sh",
-    "mktemp -d",
-    "trap cleanup EXIT",
-):
-    assert marker in step["run"], marker
+assert not (root / ".github" / "actions" / "audit" / "action.yml").exists()
+assert not (root / "templates" / "drift-audit.yml").exists()
 
-assert set(template["on"]) == {"schedule", "workflow_dispatch"}
-assert template["permissions"] == {"actions": "read", "contents": "read"}
-assert template["concurrency"]["cancel-in-progress"] == "false"
-jobs = template["jobs"]
+workflow = yaml.load(workflow_path.read_text(), Loader=yaml.BaseLoader)
+assert workflow["name"] == "Engineering baseline drift audit"
+assert set(workflow["on"]) == {"schedule", "workflow_dispatch"}
+assert workflow["on"]["schedule"] == [{"cron": "23 18 * * 0"}]
+assert workflow["permissions"] == {"contents": "read"}
+assert workflow["concurrency"]["cancel-in-progress"] == "false"
+
+jobs = workflow["jobs"]
 assert set(jobs) == {"audit"}
 job = jobs["audit"]
 assert job["runs-on"] == "ubuntu-latest"
-assert "environment" not in job
-uses = [item["uses"] for item in job["steps"] if "uses" in item]
-assert uses == [
-    "HyxiaoGe/engineering-baseline/.github/actions/audit@PROJECT_REPLACE_BASELINE_SHA"
+assert job["environment"] == "audit"
+assert job["timeout-minutes"] == "20"
+
+steps = job["steps"]
+checkout = [step for step in steps if step.get("uses", "").startswith("actions/checkout@")]
+assert len(checkout) == 1
+assert checkout[0]["uses"] == "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
+assert checkout[0]["with"]["persist-credentials"] == "false"
+
+tokens = [
+    step
+    for step in steps
+    if step.get("uses", "").startswith("actions/create-github-app-token@")
 ]
-assert job["steps"][0]["with"]["repository"] == "${{ github.repository }}"
-assert "secrets." not in template_path.read_text()
-assert re.search(
-    r"engineering-baseline/\.github/actions/audit@PROJECT_REPLACE_BASELINE_SHA\s+# v1\.1\.0",
-    template_path.read_text(),
-)
+assert len(tokens) == 1
+token = tokens[0]
+assert token["id"] == "app-token"
+assert token["uses"] == "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1"
+assert token["with"]["client-id"] == "${{ vars.BASELINE_AUDIT_APP_CLIENT_ID }}"
+assert "app-id" not in token["with"]
+assert token["with"]["private-key"] == "${{ secrets.BASELINE_AUDIT_APP_PRIVATE_KEY }}"
+assert token["with"]["owner"] == "HyxiaoGe"
+assert {
+    key: value
+    for key, value in token["with"].items()
+    if key.startswith("permission-")
+} == {
+    "permission-actions": "read",
+    "permission-administration": "read",
+    "permission-contents": "read",
+    "permission-environments": "read",
+    "permission-secrets": "read",
+}
+scoped_repositories = [
+    f"HyxiaoGe/{name}"
+    for name in token["with"]["repositories"].splitlines()
+    if name.strip()
+]
+assert scoped_repositories == registry
+
+commands = "\n".join(step.get("run", "") for step in steps)
+assert "PyYAML==6.0.3" in commands
+assert "scripts/audit-maintained-repositories.sh" in commands
+audit_steps = [step for step in steps if "audit-maintained-repositories.sh" in step.get("run", "")]
+assert len(audit_steps) == 1
+assert audit_steps[0]["env"]["GH_TOKEN"] == "${{ steps.app-token.outputs.token }}"
+
+workflow_text = workflow_path.read_text()
+assert "github.token" not in workflow_text
+assert "secrets: inherit" not in workflow_text
 for marker in (
-    "不保存个人访问令牌",
-    "PROJECT_REPLACE_BASELINE_SHA",
-    "access_level=user",
-    "首次人工触发",
+    "GitHub App",
+    "Administration: read",
+    "Actions: read",
+    "Contents: read",
+    "Environments: read",
+    "Secrets: read",
+    "audit` Environment",
 ):
     assert marker in readme, marker
+    assert marker in maintenance, marker
 
-print("跨仓漂移审计复用入口契约通过")
+for forbidden in (
+    "templates/drift-audit.yml",
+    "PROJECT_REPLACE_BASELINE_SHA",
+    "调用仓库自己的 `GITHUB_TOKEN`",
+):
+    assert forbidden not in readme, forbidden
+    assert forbidden not in maintenance, forbidden
+
+print("中央 GitHub App 漂移审计入口契约通过")
 PY
   then
-    echo "FAIL: 跨仓漂移审计复用入口不满足最小权限契约"
+    echo "FAIL: 中央 GitHub App 漂移审计入口不满足最小权限契约"
     failures=$((failures + 1))
   fi
 }
@@ -341,7 +386,7 @@ check_templates
 check_registry_entrypoint
 check_agents_template
 check_baseline_ci_workflow
-check_reusable_audit_entrypoint
+check_central_audit_entrypoint
 
 if (( failures > 0 )); then
   echo "审计脚本 fixture 测试失败：${failures} 项"

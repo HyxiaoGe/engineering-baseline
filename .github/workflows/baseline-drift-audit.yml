@@ -1,0 +1,61 @@
+name: Engineering baseline drift audit
+
+on:
+  schedule:
+    # 每周一 02:23（Asia/Shanghai）。
+    - cron: "23 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engineering-baseline-drift-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Maintained repositories baseline audit
+    runs-on: ubuntu-latest
+    environment: audit
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Create scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.BASELINE_AUDIT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BASELINE_AUDIT_APP_PRIVATE_KEY }}
+          owner: HyxiaoGe
+          permission-actions: read
+          permission-administration: read
+          permission-contents: read
+          permission-environments: read
+          permission-secrets: read
+          repositories: |
+            fusion-api
+            fusion-ui
+            ai-audio-assistant-web
+            ai-audio-assistant-ui
+
+      - name: Install pinned audit dependency
+        run: |
+          set -euo pipefail
+          python3 -m venv .audit-venv
+          .audit-venv/bin/python -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            PyYAML==6.0.3
+
+      - name: Audit maintained repositories
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          PATH="${PWD}/.audit-venv/bin:${PATH}" \
+            bash scripts/audit-maintained-repositories.sh

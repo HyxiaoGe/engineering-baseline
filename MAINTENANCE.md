@@ -26,8 +26,9 @@
 3. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
 4. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
 5. 将 `owner/repo` 追加到 `repositories.txt`。
-6. 从 `templates/drift-audit.yml` 接入定期漂移审计，并把基线 Action 固定到已验证的完整 commit SHA。
-7. 运行 fixture 测试和维护清单 live 审计；两者都成功后才算纳入基线。
+6. 将仓库名追加到中央 `.github/workflows/baseline-drift-audit.yml` 的 `repositories` 显式列表；测试会要求该列表与清单顺序一致。
+7. 把只读 GitHub App 的安装范围扩展到新仓库；纳管项目不得保存 App 私钥或个人访问令牌。
+8. 运行 fixture 测试，并在基线仓库人工触发中央 live 审计；两者都成功后才算纳入基线。
 
 ## 修改公共规则
 
@@ -52,10 +53,10 @@
 ## 发布基线版本
 
 1. 先让基线仓库的 `Baseline contract validation` 在真实 PR 通过。
-2. 使用该 PR 的完整 commit SHA 更新纳管项目，不能让项目引用浮动分支或 tag。
-3. 四仓项目 PR 门禁全部通过后，逐仓合并并首次人工触发漂移审计。
-4. 只有四仓都输出 `PASS`，才更新版本说明并把该 SHA 作为后续新项目入口。
-5. 基线私有 Action 的共享范围保持 `access_level=user`；禁止改为公开访问或在项目中保存权限更大的个人令牌。
+2. 合并后人工触发 `Engineering baseline drift audit`，保存四仓 live 结果。
+3. 只有四仓都输出 `PASS`，才更新版本说明并把该版本作为后续新项目入口。
+4. 中央审计的 GitHub App 只允许 `Administration: read`、`Actions: read`、`Contents: read`、`Environments: read`、`Secrets: read`，不订阅 webhook 事件且不授予写权限。
+5. App Client ID 使用 repository variable；私钥只存放在基线仓库的 `audit` Environment。禁止把 App 私钥下发到项目，也禁止保存个人访问令牌。
 
 ## 漂移处理
 
