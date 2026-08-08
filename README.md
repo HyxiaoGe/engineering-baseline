@@ -1,21 +1,22 @@
 # GitHub 工程基线
 
-这是一套本地、可复用的 GitHub Actions 与仓库治理基线。它统一跨项目的安全边界和验收证据，不统一项目内部的构建方式。
+这是 [HyxiaoGe/engineering-baseline](https://github.com/HyxiaoGe/engineering-baseline) 私有仓库维护的一套可复用 GitHub Actions 与仓库治理基线。它统一跨项目的安全边界和验收证据，不统一项目内部的构建方式。
 
-当前目录不会自动创建 GitHub 仓库，也不会推送或修改任何项目。`scripts/audit-github-baseline.sh` 只通过 GitHub GET API 读取公开配置、工作流内容以及 secret **名称**，不会读取或输出 secret 值。
+基线仓库自身不会自动修改纳管项目。`scripts/audit-github-baseline.sh` 只通过 GitHub GET API 读取仓库配置、工作流内容以及 secret **名称**，不会读取或输出 secret 值。
 
 当前纳管仓库记录在 `repositories.txt`。公共规则的变更、Action 升级、新项目接入和漂移处理统一从 [MAINTENANCE.md](MAINTENANCE.md) 进入。
 
 ## 接入顺序
 
 1. 从独立 Git worktree 创建变更分支，避免污染长期开发目录。
-2. 复制 `templates/pr-ci.yml` 和 `templates/release.yml`，替换所有 `PROJECT_REPLACE` 项。
-3. 在仓库内实现项目自己的 PR 验证、镜像发布、部署、容器内 smoke 和发布收尾脚本。
-4. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
-5. 为 `master` 启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
-6. 在真实 PR 上先让新检查通过，再原子替换旧 required check；不要先删除旧门禁。
-7. 合并后核对运行容器的实际镜像 tag 与 merge SHA，并执行容器内部 smoke。
-8. 使用只读审计检查规则漂移。
+2. 复制 `templates/AGENTS.md` 到项目根目录，替换全部 `PROJECT_REPLACE` 项并补齐项目内部规则。
+3. 复制 `templates/pr-ci.yml` 和 `templates/release.yml`，替换所有 `PROJECT_REPLACE` 项。
+4. 在仓库内实现项目自己的 PR 验证、镜像发布、部署、容器内 smoke 和发布收尾脚本。
+5. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
+6. 为 `master` 启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
+7. 在真实 PR 上先让新检查通过，再原子替换旧 required check；不要先删除旧门禁。
+8. 合并后核对运行容器的实际镜像 tag 与 merge SHA，并执行容器内部 smoke。
+9. 使用只读审计检查规则漂移。
 
 完整 MUST 和项目扩展点见 [contracts/ci-cd-baseline.md](contracts/ci-cd-baseline.md)。
 

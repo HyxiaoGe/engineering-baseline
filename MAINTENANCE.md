@@ -21,11 +21,13 @@
 
 ## 新项目接入
 
-1. 在独立 worktree 中复制并按项目实际情况改造 `templates/` 下的 PR 与 release 模板。
-2. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
-3. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
-4. 将 `owner/repo` 追加到 `repositories.txt`。
-5. 运行 fixture 测试和维护清单 live 审计；两者都成功后才算纳入基线。
+1. 在独立 worktree 中复制 `templates/AGENTS.md`，替换占位符并补齐项目内部规则；项目规则不得降低公共 MUST。
+2. 复制并按项目实际情况改造 `templates/` 下的 PR 与 release workflow。
+3. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
+4. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
+5. 将 `owner/repo` 追加到 `repositories.txt`。
+6. 从 `templates/drift-audit.yml` 接入定期漂移审计，并把基线 Action 固定到已验证的完整 commit SHA。
+7. 运行 fixture 测试和维护清单 live 审计；两者都成功后才算纳入基线。
 
 ## 修改公共规则
 

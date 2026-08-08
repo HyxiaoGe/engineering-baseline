@@ -147,6 +147,140 @@ check_registry_entrypoint() {
   rm -rf -- "${temp_dir}"
 }
 
+check_agents_template() {
+  if ! python3 - "${ROOT_DIR}" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+template = (root / "templates" / "AGENTS.md").read_text()
+contract = (root / "contracts" / "ci-cd-baseline.md").read_text()
+
+for marker in (
+    "PROJECT_REPLACE",
+    "公共 MUST",
+    "子目录 `AGENTS.md`",
+    "独立 Git worktree",
+    "Co-Authored-By: Codex <noreply@anthropic.com>",
+):
+    assert marker in template, marker
+
+assert "AGENTS.md 覆盖边界" in contract
+assert "不得降低" in contract
+print("AGENTS 模板与覆盖契约通过")
+PY
+  then
+    echo "FAIL: AGENTS 模板或覆盖契约不满足"
+    failures=$((failures + 1))
+  fi
+}
+
+check_baseline_ci_workflow() {
+  if ! python3 - "${ROOT_DIR}" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+root = Path(sys.argv[1])
+path = root / ".github" / "workflows" / "baseline-ci.yml"
+document = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+
+assert document["name"] == "Engineering baseline CI"
+assert set(document["on"]) == {"pull_request", "push", "workflow_dispatch"}
+assert document["on"]["pull_request"]["branches"] == ["master"]
+assert document["on"]["push"]["branches"] == ["master"]
+assert document["permissions"] == {"contents": "read"}
+assert document["concurrency"]["cancel-in-progress"] == "true"
+
+jobs = document["jobs"]
+assert set(jobs) == {"baseline"}
+job = jobs["baseline"]
+assert job["name"] == "Baseline contract validation"
+assert job["runs-on"] == "ubuntu-latest"
+assert "environment" not in job
+
+workflow_text = path.read_text()
+assert "secrets." not in workflow_text
+steps = job["steps"]
+checkout = [step for step in steps if step.get("uses", "").startswith("actions/checkout@")]
+assert len(checkout) == 1
+assert checkout[0]["uses"] == "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
+assert checkout[0]["with"]["persist-credentials"] == "false"
+
+commands = "\n".join(step.get("run", "") for step in steps)
+for marker in (
+    "PyYAML==6.0.3",
+    "ruff==0.15.10",
+    "shellcheck",
+    "ruff check",
+    "ruff format --check",
+    "tests/test-audit.sh",
+):
+    assert marker in commands, marker
+
+print("基线仓库 CI 工作流契约通过")
+PY
+  then
+    echo "FAIL: 基线仓库 CI 工作流不满足最小权限与自测契约"
+    failures=$((failures + 1))
+  fi
+}
+
+check_reusable_audit_entrypoint() {
+  if ! python3 - "${ROOT_DIR}" <<'PY'
+from pathlib import Path
+import re
+import sys
+import yaml
+
+root = Path(sys.argv[1])
+action_path = root / ".github" / "actions" / "audit" / "action.yml"
+template_path = root / "templates" / "drift-audit.yml"
+action = yaml.load(action_path.read_text(), Loader=yaml.BaseLoader)
+template = yaml.load(template_path.read_text(), Loader=yaml.BaseLoader)
+
+assert action["inputs"]["repository"]["required"] == "true"
+assert action["runs"]["using"] == "composite"
+assert len(action["runs"]["steps"]) == 1
+step = action["runs"]["steps"][0]
+assert step["shell"] == "bash"
+assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+assert step["env"]["AUDIT_REPOSITORY"] == "${{ inputs.repository }}"
+for marker in (
+    "PyYAML==6.0.3",
+    "audit-github-baseline.sh",
+    "mktemp -d",
+    "trap cleanup EXIT",
+):
+    assert marker in step["run"], marker
+
+assert set(template["on"]) == {"schedule", "workflow_dispatch"}
+assert template["permissions"] == {"actions": "read", "contents": "read"}
+assert template["concurrency"]["cancel-in-progress"] == "false"
+jobs = template["jobs"]
+assert set(jobs) == {"audit"}
+job = jobs["audit"]
+assert job["runs-on"] == "ubuntu-latest"
+assert "environment" not in job
+uses = [item["uses"] for item in job["steps"] if "uses" in item]
+assert uses == [
+    "HyxiaoGe/engineering-baseline/.github/actions/audit@PROJECT_REPLACE_BASELINE_SHA"
+]
+assert job["steps"][0]["with"]["repository"] == "${{ github.repository }}"
+assert "secrets." not in template_path.read_text()
+assert re.search(
+    r"engineering-baseline/\.github/actions/audit@PROJECT_REPLACE_BASELINE_SHA\s+# v1\.1\.0",
+    template_path.read_text(),
+)
+
+print("跨仓漂移审计复用入口契约通过")
+PY
+  then
+    echo "FAIL: 跨仓漂移审计复用入口不满足最小权限契约"
+    failures=$((failures + 1))
+  fi
+}
+
 run_expect_success good
 run_expect_failure mutable-action "[ACTION_PIN]"
 run_expect_failure old-required-check "[REQUIRED_CHECK]"
@@ -197,6 +331,9 @@ run_expect_failure stale-active-workflow "[WORKFLOW_LIST]"
 run_expect_failure auxiliary-missing-permissions "[AUX_PR_PERMISSION]"
 check_templates
 check_registry_entrypoint
+check_agents_template
+check_baseline_ci_workflow
+check_reusable_audit_entrypoint
 
 if (( failures > 0 )); then
   echo "审计脚本 fixture 测试失败：${failures} 项"
