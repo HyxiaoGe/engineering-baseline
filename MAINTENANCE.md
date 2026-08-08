@@ -49,6 +49,14 @@
 - 同时更新模板、审计器 `KNOWN_ACTIONS`、契约中的版本表和相关 fixture。
 - 通过真实 PR 验证后再合并；不得先改 required check 或回退为浮动 tag。
 
+## 发布基线版本
+
+1. 先让基线仓库的 `Baseline contract validation` 在真实 PR 通过。
+2. 使用该 PR 的完整 commit SHA 更新纳管项目，不能让项目引用浮动分支或 tag。
+3. 四仓项目 PR 门禁全部通过后，逐仓合并并首次人工触发漂移审计。
+4. 只有四仓都输出 `PASS`，才更新版本说明并把该 SHA 作为后续新项目入口。
+5. 基线私有 Action 的共享范围保持 `access_level=user`；禁止改为公开访问或在项目中保存权限更大的个人令牌。
+
 ## 漂移处理
 
 - 先依据稳定错误码定位公共 MUST，例如 `[ACTION_PIN]`、`[REQUIRED_CHECK_APP]`、`[SECRET_ENV_BOUNDARY]`。

@@ -236,6 +236,7 @@ import yaml
 root = Path(sys.argv[1])
 action_path = root / ".github" / "actions" / "audit" / "action.yml"
 template_path = root / "templates" / "drift-audit.yml"
+readme = (root / "README.md").read_text()
 action = yaml.load(action_path.read_text(), Loader=yaml.BaseLoader)
 template = yaml.load(template_path.read_text(), Loader=yaml.BaseLoader)
 
@@ -272,6 +273,13 @@ assert re.search(
     r"engineering-baseline/\.github/actions/audit@PROJECT_REPLACE_BASELINE_SHA\s+# v1\.1\.0",
     template_path.read_text(),
 )
+for marker in (
+    "不保存个人访问令牌",
+    "PROJECT_REPLACE_BASELINE_SHA",
+    "access_level=user",
+    "首次人工触发",
+):
+    assert marker in readme, marker
 
 print("跨仓漂移审计复用入口契约通过")
 PY

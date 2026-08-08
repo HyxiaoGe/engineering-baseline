@@ -54,6 +54,19 @@
 bash tests/test-audit.sh
 ```
 
+## 自动漂移审计
+
+`templates/drift-audit.yml` 是纳管项目的定期审计入口。它调用私有基线仓库中的 `.github/actions/audit`，使用调用仓库自己的 `GITHUB_TOKEN`，权限精确限制为 `actions: read` 与 `contents: read`；不保存个人访问令牌，也不增加项目 secret。
+
+私有基线仓库的 Actions 访问范围必须保持 `access_level=user`，即只允许 `HyxiaoGe` 自己拥有的仓库调用。接入时：
+
+1. 复制 `templates/drift-audit.yml` 到项目 `.github/workflows/baseline-drift-audit.yml`。
+2. 用已经通过基线仓库真实 CI 的完整 commit SHA 替换 `PROJECT_REPLACE_BASELINE_SHA`，保留版本注释。
+3. 通过项目自身的 PR 契约测试后合并。
+4. 在默认分支首次人工触发并确认审计输出为 `PASS owner/repo`；任何 API 无权读取或结构不完整都会 fail-closed，不能把跳过当成通过。
+
+模板按 Asia/Shanghai 周一凌晨安排错峰计划；GitHub 的 `schedule` 可能延迟，规则正确性以运行结论而不是精确启动分钟为准。
+
 ## 不由模板决定的内容
 
 项目自行决定语言、包管理器、测试命令、端口、容器名、镜像名、迁移步骤、服务数量、smoke URL/命令和通知实现。模板只提供替换点，复制后必须结合项目真实行为完成验证。
