@@ -1,0 +1,8 @@
+{
+  "total_count": 3,
+  "workflows": [
+    {"path": ".github/workflows/pr-ci.yml", "state": "active"},
+    {"path": ".github/workflows/release.yml", "state": "active"},
+    {"path": "dynamic/dependabot/update-graph", "state": "active"}
+  ]
+}

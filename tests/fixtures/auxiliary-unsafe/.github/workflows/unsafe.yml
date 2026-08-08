@@ -1,0 +1,18 @@
+name: Unsafe helper
+on:
+  pull_request:
+    branches: [master]
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  unsafe:
+    name: Auxiliary scan
+    runs-on: [self-hosted, Linux]
+    environment: dev
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: {persist-credentials: false}
+      - run: |
+          echo "${{ secrets.DEPLOY_TOKEN }}"
+          helm upgrade --install project ./chart

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" != "api" || -z "${2:-}" ]]; then
+  echo "mock gh 仅支持 gh api <endpoint>" >&2
+  exit 2
+fi
+
+endpoint="$2"
+case_dir="${AUDIT_FIXTURE_DIR:?必须设置 AUDIT_FIXTURE_DIR}"
+good_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../fixtures/good" && pwd)"
+
+fixture_file() {
+  local relative_path="$1"
+  if [[ -f "${case_dir}/${relative_path}" ]]; then
+    printf '%s\n' "${case_dir}/${relative_path}"
+  else
+    printf '%s\n' "${good_dir}/${relative_path}"
+  fi
+}
+
+case "${endpoint}" in
+  repos/*/actions/workflows*page=2*)
+    cat "$(fixture_file workflows-page-2.json)"
+    ;;
+  repos/*/actions/workflows*)
+    if [[ -f "${case_dir}/workflows-page-1.json" ]]; then
+      cat "${case_dir}/workflows-page-1.json"
+    else
+      cat "$(fixture_file workflows.json)"
+    fi
+    ;;
+  repos/*/branches/master/protection*)
+    cat "$(fixture_file protection.json)"
+    ;;
+  repos/*/environments/dev/secrets*page=2*)
+    cat "$(fixture_file env-secrets-page-2.json)"
+    ;;
+  repos/*/environments/dev/secrets*)
+    if [[ -f "${case_dir}/env-secrets-page-1.json" ]]; then
+      cat "${case_dir}/env-secrets-page-1.json"
+    else
+      cat "$(fixture_file env-secrets.json)"
+    fi
+    ;;
+  repos/*/environments/dev*)
+    if [[ -f "${case_dir}/missing-environment" ]]; then
+      echo "环境不存在" >&2
+      exit 1
+    fi
+    cat "$(fixture_file environment.json)"
+    ;;
+  repos/*/actions/secrets*page=2*)
+    cat "$(fixture_file repo-secrets-page-2.json)"
+    ;;
+  repos/*/actions/secrets*)
+    if [[ -f "${case_dir}/repo-secrets-page-1.json" ]]; then
+      cat "${case_dir}/repo-secrets-page-1.json"
+    else
+      cat "$(fixture_file repo-secrets.json)"
+    fi
+    ;;
+  repos/*/git/trees/master*)
+    cat "$(fixture_file tree.json)"
+    ;;
+  repos/*/contents/*)
+    python3 - "${endpoint}" "${case_dir}" "${good_dir}" <<'PY'
+import base64
+import json
+from pathlib import Path
+import sys
+from urllib.parse import unquote
+
+endpoint, case_dir, good_dir = sys.argv[1:]
+path = unquote(endpoint.split("/contents/", 1)[1].split("?", 1)[0])
+relative = Path(path)
+candidate = Path(case_dir) / relative
+if not candidate.is_file():
+    candidate = Path(good_dir) / relative
+if not candidate.is_file():
+    raise SystemExit(f"fixture 内容不存在: {path}")
+content = base64.b64encode(candidate.read_bytes()).decode("ascii")
+print(json.dumps({"content": content, "encoding": "base64"}))
+PY
+    ;;
+  repos/*)
+    cat "$(fixture_file repo.json)"
+    ;;
+  *)
+    echo "未知 mock endpoint: ${endpoint}" >&2
+    exit 2
+    ;;
+esac

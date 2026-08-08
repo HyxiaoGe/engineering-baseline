@@ -1,0 +1,6 @@
+name: Symlink fixture
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: echo should-not-run

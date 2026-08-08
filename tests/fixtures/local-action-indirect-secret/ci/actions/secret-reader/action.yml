@@ -1,0 +1,6 @@
+name: Indirect secret
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: echo "${{ secrets.DEPLOY_TOKEN }}"

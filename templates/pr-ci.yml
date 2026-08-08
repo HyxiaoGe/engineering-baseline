@@ -1,0 +1,39 @@
+name: PR validation
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: PR container validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # PROJECT_REPLACE：按项目完整验证耗时调整
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # PROJECT_REPLACE：非 Node 项目删除此步骤，并用锁定完整 SHA 的语言工具链 Action 替换。
+      - name: 配置 Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+
+      # PROJECT_REPLACE：该脚本必须执行安装、lint、完整测试、生产构建和 docker build；不得登录或 push。
+      - name: 执行 PR 完整验证
+        run: ./scripts/ci-pr-validate.sh
+
+      # PROJECT_REPLACE：脚本应只清理本次 PR 创建的临时镜像，不得使用宽泛 prune。
+      - name: 清理临时构建产物
+        if: always()
+        run: ./scripts/ci-pr-cleanup.sh

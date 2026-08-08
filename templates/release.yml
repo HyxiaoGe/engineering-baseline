@@ -1,0 +1,109 @@
+name: Master release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: master-release
+  cancel-in-progress: false
+
+env:
+  # PROJECT_REPLACE：改为项目的完整 registry 镜像名。
+  IMAGE_NAME: registry.example/owner/project
+  # PROJECT_REPLACE：改为部署后的运行容器名。
+  CONTAINER_NAME: project
+
+jobs:
+  publish:
+    name: Publish master image on Windows runner
+    if: github.ref == 'refs/heads/master'
+    # PROJECT_REPLACE：保留 self-hosted/Windows 边界，补充项目专属 runner 标签。
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    environment:
+      name: dev
+      deployment: false
+    env:
+      DOCKER_CONFIG: ${{ runner.temp }}\docker-config-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: registry.example # PROJECT_REPLACE
+          username: ${{ secrets.REGISTRY_USERNAME }} # PROJECT_REPLACE
+          password: ${{ secrets.REGISTRY_PASSWORD }} # PROJECT_REPLACE
+
+      # PROJECT_REPLACE：脚本必须发布 IMAGE_NAME:GITHUB_SHA，不要只发布 mutable tag。
+      - name: 构建并发布本次镜像
+        shell: pwsh
+        run: ./scripts/ci-publish-image.ps1
+
+      - name: 清理隔离的 Docker 凭据
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath $env:DOCKER_CONFIG) {
+            Remove-Item -LiteralPath $env:DOCKER_CONFIG -Recurse -Force
+          }
+
+  deploy:
+    name: Deploy master image on Linux runner
+    needs: publish
+    # PROJECT_REPLACE：保留 self-hosted/Linux 边界，补充项目专属 runner 标签。
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    environment:
+      name: dev
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # PROJECT_REPLACE：脚本拉取并启动 IMAGE_NAME:GITHUB_SHA，包含项目自己的迁移与编排。
+      - name: 部署本次镜像
+        run: ./scripts/ci-deploy.sh
+
+      - name: 核对运行镜像并执行容器内 smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_image="${IMAGE_NAME}:${GITHUB_SHA}"
+          actual_image="$(docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}")"
+          test "${actual_image}" = "${expected_image}"
+          # PROJECT_REPLACE：脚本在容器内部检查真实 readiness/version，并核对参数 GITHUB_SHA。
+          docker exec "${CONTAINER_NAME}" ./scripts/ci-container-smoke.sh "${GITHUB_SHA}"
+
+  finalize:
+    name: Finalize release
+    if: always()
+    needs: [publish, deploy]
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    environment:
+      name: dev
+      deployment: false
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # PROJECT_REPLACE：记录成功/失败指标和通知；外部故障不得遮蔽原始发布结果。
+      - name: 记录发布结果
+        continue-on-error: true
+        run: ./scripts/ci-release-finalize.sh
+
+      - name: 保留发布失败状态
+        if: needs.publish.result != 'success' || needs.deploy.result != 'success'
+        run: exit 1

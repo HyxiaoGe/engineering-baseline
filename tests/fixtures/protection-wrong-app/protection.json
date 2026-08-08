@@ -1,0 +1,12 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["PR container validation"],
+    "checks": [{"context": "PR container validation", "app_id": 999}]
+  },
+  "required_pull_request_reviews": {"dismiss_stale_reviews": true},
+  "enforce_admins": {"enabled": true},
+  "required_conversation_resolution": {"enabled": true},
+  "allow_force_pushes": {"enabled": false},
+  "allow_deletions": {"enabled": false}
+}

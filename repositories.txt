@@ -1,0 +1,5 @@
+# 已纳入统一工程基线的仓库；每行一个 owner/repo。
+HyxiaoGe/fusion-api
+HyxiaoGe/fusion-ui
+HyxiaoGe/ai-audio-assistant-web
+HyxiaoGe/ai-audio-assistant-ui

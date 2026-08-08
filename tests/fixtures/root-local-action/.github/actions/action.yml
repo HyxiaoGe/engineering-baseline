@@ -1,0 +1,5 @@
+name: Root local action
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6

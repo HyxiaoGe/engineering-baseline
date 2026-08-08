@@ -1,0 +1,29 @@
+name: Master release
+on:
+  push: {branches: [master]}
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  publish:
+    name: Publish master image
+    if: github.ref == 'refs/heads/master'
+    runs-on: [self-hosted, Windows, X64]
+    environment: {name: dev, deployment: false}
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - run: docker push registry.example/project:${GITHUB_SHA}
+  deploy:
+    name: Deploy master image
+    if: "!cancelled()"
+    needs: publish
+    runs-on: [self-hosted, Linux, X64]
+    environment: {name: dev}
+    steps:
+      - run: |
+          expected_image="registry.example/project:${GITHUB_SHA}"
+          actual_image="$(docker inspect --format '{{.Config.Image}}' project)"
+          test "${actual_image}" = "${expected_image}"
+          docker exec project ./scripts/readiness-smoke.sh

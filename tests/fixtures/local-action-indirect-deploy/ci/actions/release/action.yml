@@ -1,0 +1,6 @@
+name: Indirect deploy
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: helm upgrade --install project ./chart
