@@ -1,0 +1,26 @@
+name: Engineering baseline drift audit
+
+on:
+  schedule:
+    # 每周一 02:23（Asia/Shanghai）。
+    - cron: "23 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: engineering-baseline-drift-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Engineering baseline drift audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Audit repository
+        uses: HyxiaoGe/engineering-baseline/.github/actions/audit@PROJECT_REPLACE_BASELINE_SHA # v1.1.0
+        with:
+          repository: ${{ github.repository }}

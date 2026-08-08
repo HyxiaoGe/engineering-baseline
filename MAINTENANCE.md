@@ -21,11 +21,13 @@
 
 ## 新项目接入
 
-1. 在独立 worktree 中复制并按项目实际情况改造 `templates/` 下的 PR 与 release 模板。
-2. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
-3. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
-4. 将 `owner/repo` 追加到 `repositories.txt`。
-5. 运行 fixture 测试和维护清单 live 审计；两者都成功后才算纳入基线。
+1. 在独立 worktree 中复制 `templates/AGENTS.md`，替换占位符并补齐项目内部规则；项目规则不得降低公共 MUST。
+2. 复制并按项目实际情况改造 `templates/` 下的 PR 与 release workflow。
+3. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
+4. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
+5. 将 `owner/repo` 追加到 `repositories.txt`。
+6. 从 `templates/drift-audit.yml` 接入定期漂移审计，并把基线 Action 固定到已验证的完整 commit SHA。
+7. 运行 fixture 测试和维护清单 live 审计；两者都成功后才算纳入基线。
 
 ## 修改公共规则
 
@@ -46,6 +48,14 @@
 - 只接受上游官方 release 对应的完整 40 位 commit SHA。
 - 同时更新模板、审计器 `KNOWN_ACTIONS`、契约中的版本表和相关 fixture。
 - 通过真实 PR 验证后再合并；不得先改 required check 或回退为浮动 tag。
+
+## 发布基线版本
+
+1. 先让基线仓库的 `Baseline contract validation` 在真实 PR 通过。
+2. 使用该 PR 的完整 commit SHA 更新纳管项目，不能让项目引用浮动分支或 tag。
+3. 四仓项目 PR 门禁全部通过后，逐仓合并并首次人工触发漂移审计。
+4. 只有四仓都输出 `PASS`，才更新版本说明并把该 SHA 作为后续新项目入口。
+5. 基线私有 Action 的共享范围保持 `access_level=user`；禁止改为公开访问或在项目中保存权限更大的个人令牌。
 
 ## 漂移处理
 
