@@ -19,4 +19,4 @@
 
 - 优先识别会造成错误放行、错误阻断、权限扩大、secret 暴露、供应链漂移或发布/回滚证据失真的具体问题，并核对新增公共 MUST 是否确实跨项目通用。
 - 审计器变更必须同时具有能复现旧缺口的失败 fixture 和保持合法项目通过的正例；只增加字符串匹配而不能证明约束时应指出误报或漏报路径。
-- 修改 Action 或公共规则时，核对模板、审计器已知映射、契约和 fixture 是否同步；不重复报告 lint、格式化或纯风格问题，不要求与当前风险无关的重构。只有官方 Review 当前 HEAD、全部 review thread 已解决后，才允许对单个 PR 开启 Auto-merge。
+- 修改 Action 或公共规则时，核对模板、审计器已知映射、契约和 fixture 是否同步；不重复报告 lint、格式化或纯风格问题，不要求与当前风险无关的重构。官方 Review 当前不是 required check，且 GitHub 对有写权限者推送新提交不保证自动关闭 Auto-merge；v1 暂不允许对单个 PR 开启 Auto-merge，只在 Review 当前 HEAD、全部 review thread 已解决后人工合并。

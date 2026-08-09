@@ -29,10 +29,12 @@
 - MUST：v1 采用观察模式，官方 Review 不新增为 required status check，也不改变现有 `master` branch protection。
 - MUST：没有官方稳定状态接口和真实仓库验证前，不假设 Review 能映射为 GitHub required check、approval 或固定 check 名称。
 - MUST：Review 发现的问题按现有 PR 对话处理；是否阻塞合并由现有门禁和维护者判断，不增加平行状态机。
-- MUST：仓库启用 GitHub 原生 Auto-merge 和合并后自动删除远端功能分支；仓库设置只提供能力，不会自动开启任何 PR，也不得创建自研合并 Bot、Action 或平行状态机。
-- MUST：只有官方 Review 当前 HEAD、全部 review thread 已解决、依赖或发布风险已人工分类后，才允许对单个 PR 开启 Auto-merge；required checks 与 branch protection 仍由 GitHub 原生门禁执行。
-- MUST：PR 出现新提交后，旧 Review 不再作为当前 HEAD 的证据；必须重新 Review 并再次确认全部 review thread 已解决，才能重新开启该单个 PR 的 Auto-merge。
-- MUST：Dependabot PR 不因 CI 通过而自动获得 Auto-merge；运行时依赖、跨大版本升级、构建工具行为变化及会随合并触发生产发布的仓库，都必须先完成兼容性与发布授权判断。
+- MUST：[GitHub 官方文档](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/automatically-merging-a-pull-request)只保证无写权限者向已开启 Auto-merge 的 PR 推送时自动关闭；有写权限者推送新提交后不保证自动关闭，Auto-merge 可能继续保持开启。官方 Review 当前又不是 required check，因此 v1 暂不允许仓库或单个 PR 开启 Auto-merge。
+- MUST：v1 只启用合并后自动删除远端功能分支；不创建自研合并 Bot、Action、HEAD 监听器或平行状态机来补 GitHub/Codex 当前能力缺口。
+- MUST：人工合并前必须确认官方 Review 当前 HEAD、全部 review thread 已解决、required checks 成功，且依赖或发布风险已分类。
+- MUST：PR 出现新提交后，旧 Review 不再作为当前 HEAD 的证据；必须重新 Review 并再次确认全部 review thread 已解决，才能人工合并。
+- MUST：Dependabot PR 不因 CI 通过而自动合并；运行时依赖、跨大版本升级、构建工具行为变化及会随合并触发生产发布的仓库，都必须先完成兼容性与发布授权判断。
+- 项目扩展点：未来只有在官方 Review 能成为与当前 HEAD 绑定的 required gate，或 GitHub 保证任意新提交都会撤销 Auto-merge 后，才重新评估启用原生 Auto-merge。
 
 ## 5. 审计与验收
 
@@ -40,7 +42,7 @@
 - MUST：审计使用固定 `markdown-it-py==3.0.0` 的 CommonMark parser，只接受真实 `h2` token，且 token 对应源码行必须精确等于 `## Code Review Rules`；不得维护平行的手写 Markdown 状态机。
 - MUST：直接依赖 `markdown-it-py==3.0.0` 与传递依赖 `mdurl==0.1.2` 在本地入口和两条基线 workflow 中显式校验或固定安装，不得依赖运行环境碰巧预装的版本。
 - MUST：中央审计不抓取 GitHub/Codex 页面、不调用私有接口，也不声称验证 Automatic reviews 设置或模型审查质量。
-- MUST：中央审计只验证仓库允许 Auto-merge 且合并后自动删除远端功能分支；单个 PR 是否按顺序完成 Review、解决 thread、重新 Review 和开启 Auto-merge，由真实 PR 验收，不伪装成静态仓库审计结论。
+- MUST：中央审计验证纳管产品仓库关闭 Auto-merge 且合并后自动删除远端功能分支；人工合并前是否完成当前 HEAD Review、解决 thread 与风险分类，由真实 PR 验收，不伪装成静态仓库审计结论。
 - MUST：官方设置通过真实 PR 验收：Automatic reviews 能产生审查；必要时 `@codex review` 能触发人工兜底；Reviewer 能遵循仓库规则。
 - MUST：接入不得新增 review 专用 secret、GitHub App、workflow、runner 或发布权限。
 - 项目扩展点：保存测试 PR、Review 链接和观察期结论的方式。

@@ -60,7 +60,7 @@
 - MUST：required status checks 启用 strict，并要求 GitHub Actions app 产生的 `PR container validation`。
 - MUST：要求通过 Pull Request、对管理员执行保护、要求解决对话、禁止 force push、禁止删除 `master`。
 - MUST：迁移检查名时先让新检查在真实 PR 成功，再原子替换旧 required check。
-- MUST：仓库允许 GitHub 原生 Auto-merge，并在合并后自动删除远端功能分支；是否对单个 PR 开启 Auto-merge 由官方 Review 治理契约决定，不能仅凭 CI 通过自动开启。
+- MUST：官方 Review 尚不能作为当前 HEAD 的 required check 时，仓库关闭 Auto-merge；合并后自动删除远端功能分支。人工合并边界由官方 Review 治理契约决定，不能仅凭 CI 通过合并。
 - 项目扩展点：额外 required checks，例如 CodeQL、语言专项检查或合规扫描。
 
 ## 7. Environment 与 secret 边界

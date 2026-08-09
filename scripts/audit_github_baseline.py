@@ -531,9 +531,9 @@ def build_source(repo: str) -> RepositorySource:
     source = RepositorySource(repo=repo, workflows={}, tree={})
     if metadata.get("default_branch") != "master":
         source.errors.append("[DEFAULT_BRANCH] 仓库 default_branch 必须是 master")
-    if metadata.get("allow_auto_merge") is not True:
+    if metadata.get("allow_auto_merge") is not False:
         source.errors.append(
-            "[REPOSITORY_MERGE_POLICY] 仓库必须允许对单个 PR 使用 Auto-merge"
+            "[REPOSITORY_MERGE_POLICY] 官方 Review 尚非 required check，仓库必须关闭 Auto-merge"
         )
     if metadata.get("delete_branch_on_merge") is not True:
         source.errors.append(

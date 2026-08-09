@@ -27,7 +27,7 @@
 
 - 只报告可证实且会造成实际影响的问题；尤其关注正确性、性能、回归、安全、隐私、权限、可维护性等风险。
 - 检查数据/API 与跨仓协议兼容、CI/CD 权限边界、失败/回滚路径及测试能否证明这些高风险行为。
-- 把 PR 说明和已有测试视为待验证声明，不重复 lint、格式化或纯风格意见，不要求与当前风险无关的工作；只有官方 Review 当前 HEAD、全部 review thread 已解决后，才允许对单个 PR 开启 Auto-merge；项目重点：PROJECT_REPLACE_REVIEW_RULES
+- 把 PR 说明和已有测试视为待验证声明，不重复 lint、格式化或纯风格意见，不要求与当前风险无关的工作；官方 Review 当前不是 required check，且 GitHub 对有写权限者推送新提交不保证自动关闭 Auto-merge；v1 暂不允许对单个 PR 开启 Auto-merge，只在 Review 当前 HEAD、全部 review thread 已解决后人工合并；项目重点：PROJECT_REPLACE_REVIEW_RULES
 
 ## CI/CD 公共门禁
 

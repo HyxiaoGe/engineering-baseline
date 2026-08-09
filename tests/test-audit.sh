@@ -202,13 +202,15 @@ for document in (root_agents, template, review_contract, readme, maintenance):
         "全部 review thread 已解决",
         "单个 PR",
         "Auto-merge",
+        "暂不允许",
     ):
         assert marker in document, (marker, document[:40])
 for document in (review_contract, readme, maintenance):
     for marker in (
         "新提交",
-        "重新 Review",
-        "不会自动开启",
+        "有写权限",
+        "不保证自动关闭",
+        "不是 required check",
         "Dependabot",
     ):
         assert marker in document, (marker, document[:40])
@@ -505,7 +507,7 @@ PY
 }
 
 run_expect_success good
-run_expect_failure repository-auto-merge-disabled "[REPOSITORY_MERGE_POLICY]"
+run_expect_failure repository-auto-merge-enabled "[REPOSITORY_MERGE_POLICY]"
 run_expect_failure repository-branch-auto-delete-disabled "[REPOSITORY_MERGE_POLICY]"
 run_expect_failure code-review-rules-missing "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-symlink "[CODE_REVIEW_RULES]"
