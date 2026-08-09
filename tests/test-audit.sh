@@ -179,7 +179,8 @@ for marker in (
     "独立 Git worktree",
     "Co-Authored-By: Codex <noreply@anthropic.com>",
     "allow_auto_merge=false",
-    "delete_branch_on_merge=true",
+    "临时 PR head 分支",
+    "长期 head 分支受保护",
 ):
     assert marker in template, marker
 
@@ -221,6 +222,10 @@ for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
 assert 'MarkdownIt("commonmark")' in audit_source
 for forbidden in ("markdown_fence", "raw_html_block_start"):
     assert forbidden not in audit_source, forbidden
+for document in (template, review_contract, readme, maintenance):
+    assert "临时 PR head 分支" in document
+    assert "长期 head 分支受保护" in document
+assert "delete_branch_on_merge" not in audit_source
 print("AGENTS 模板、根规则与官方 Code Review 治理契约通过")
 PY
   then
@@ -510,7 +515,6 @@ PY
 
 run_expect_success good
 run_expect_failure repository-auto-merge-enabled "[REPOSITORY_MERGE_POLICY]"
-run_expect_failure repository-branch-auto-delete-disabled "[REPOSITORY_MERGE_POLICY]"
 run_expect_failure code-review-rules-missing "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-symlink "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-heading-missing "[CODE_REVIEW_RULES]"

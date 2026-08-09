@@ -24,7 +24,7 @@
 
 1. 在独立 worktree 中复制 `templates/AGENTS.md`，替换占位符并补齐项目内部规则；项目规则不得降低公共 MUST，根文件必须保留精确 `## Code Review Rules` 标题。
 2. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`，并用真实 PR 验证自动审查；未触发或需要重审时使用 `@codex review`。
-3. 保持 Auto-merge 关闭，并启用合并后自动删除远端功能分支；官方 Review 尚非 required check 时不得为单个 PR 开启 Auto-merge。
+3. 保持 Auto-merge 关闭；官方 Review 尚非 required check 时不得为单个 PR 开启 Auto-merge。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用合并后自动删除远端分支。
 4. 复制并按项目实际情况改造 `templates/` 下的 PR、release workflow、`release-safety.yml` 与 `release-safety-contract.sh`；把后两者分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 的 Git mode 为 `100755`，并映射项目真实 job/step 拓扑。
 5. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
 6. 通过一次 master 发布证明 Environment-only secret、旧运行态捕获、候选镜像身份、容器内 smoke、成功后清理和 `DEPLOY_TARGET_SHA` 发布证据。
@@ -65,7 +65,8 @@ prepare 存在时，publish、migration 与 deploy 必须使用 `needs.<prepare>
 - 不建立 HEAD 监听器、自动合并 Bot、Action 或定时任务来补这个能力缺口；未来等官方 Review 可成为当前 HEAD required gate，或 GitHub 保证任意新提交都会撤销 Auto-merge 后再评估。
 - 人工合并前确认官方 Review 当前 HEAD、全部 review thread 已解决、required checks 成功且风险已分类；新提交必须重新 Review。
 - Dependabot PR 不能只凭 CI 绿灯自动合并；运行时依赖、跨大版本和会触发生产发布的仓库必须另做兼容性与发布授权判断。
-- 合并后远端功能分支由 GitHub 自动删除。本地 worktree/分支只在已合并、干净、没有独有提交且相关发布验收完成后删除。
+- 分支自动删除不是公共强制项。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用 GitHub 的合并后自动删除；存在未保护且需要复用的长期 head 分支时必须关闭。
+- 本地 worktree/分支只在已合并、干净、没有独有提交且相关发布验收完成后删除。
 
 ## Action 升级
 

@@ -535,10 +535,6 @@ def build_source(repo: str) -> RepositorySource:
         source.errors.append(
             "[REPOSITORY_MERGE_POLICY] 官方 Review 尚非 required check，仓库必须关闭 Auto-merge"
         )
-    if metadata.get("delete_branch_on_merge") is not True:
-        source.errors.append(
-            "[REPOSITORY_MERGE_POLICY] 仓库必须在合并后自动删除远端功能分支"
-        )
 
     workflows = gh_api_paginated(repo, "actions/workflows", "workflows")
     for workflow in workflows:

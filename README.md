@@ -11,7 +11,7 @@
 1. 从独立 Git worktree 创建变更分支，避免污染长期开发目录。
 2. 复制 `templates/AGENTS.md` 到项目根目录，替换全部 `PROJECT_REPLACE` 项并补齐项目内部规则，保留精确标题 `## Code Review Rules`。
 3. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`；规则只决定审查重点，不负责触发，人工兜底使用 `@codex review`。
-4. 保持仓库 Auto-merge 关闭，并启用合并后自动删除远端功能分支；官方 Review 尚非 required check 时不得对单个 PR 开启 Auto-merge。
+4. 保持仓库 Auto-merge 关闭；官方 Review 尚非 required check 时不得对单个 PR 开启 Auto-merge。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用合并后自动删除远端分支。
 5. 复制 `templates/pr-ci.yml`、`templates/release.yml`、`templates/release-safety.yml` 和 `templates/release-safety-contract.sh`；将后两份分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 为 `100755`，再替换所有 `PROJECT_REPLACE` 项。
 6. 在仓库内实现项目自己的 PR 验证、镜像发布、向前迁移、部署、自动恢复、容器内 smoke、成功后镜像清理和发布收尾脚本；由固定 wrapper 调用项目语言或容器内的可执行契约测试，并让 manifest 声明 wrapper 与 PR 稳定步骤 ID。
 7. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
@@ -32,7 +32,9 @@
 
 GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权限者推送后不保证自动关闭。由于官方 Review 当前不是 required check，纳管产品仓库在 v1 暂不允许开启 Auto-merge，也不为单个 PR 启用它。
 
-人工合并前必须确认官方 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功；新提交必须重新 Review。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。合并完成后由 GitHub 自动删除远端功能分支；本地 worktree 和分支只在确认已合并、工作区干净且没有独有提交后清理。
+人工合并前必须确认官方 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功；新提交必须重新 Review。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。
+
+分支自动删除不是公共强制项。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用 GitHub 的合并后自动删除；存在未保护且需要复用的 `dev`、`release` 等长期 head 分支时必须关闭。本地 worktree 和分支始终只在确认已合并、工作区干净且没有独有提交后清理。
 
 ## 只读审计
 
@@ -71,7 +73,7 @@ GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权�
 - publish/deploy/finalize 的 master 边界、normal/rollback 分支、migration 跳过回滚和 rollback 允许式不能只靠 manifest 自我声明，中央会独立验证公共语义；
 - release 内未声明的特权 job、job 级写权限、动态分域 concurrency 和未锁定 digest 的 `docker://` Action；
 - `master` branch protection 和 required check。
-- 纳管产品仓库关闭 Auto-merge，且合并后自动删除远端功能分支；人工合并前的 Review/thread/风险分类仍由真实 PR 验收。
+- 纳管产品仓库关闭 Auto-merge；分支自动删除按项目真实分支模型配置，不由公共审计强制。人工合并前的 Review/thread/风险分类仍由真实 PR 验收。
 
 中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置和模型审查质量；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR Review 负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
 
