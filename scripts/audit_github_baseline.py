@@ -531,6 +531,10 @@ def build_source(repo: str) -> RepositorySource:
     source = RepositorySource(repo=repo, workflows={}, tree={})
     if metadata.get("default_branch") != "master":
         source.errors.append("[DEFAULT_BRANCH] 仓库 default_branch 必须是 master")
+    if metadata.get("allow_auto_merge") is not False:
+        source.errors.append(
+            "[REPOSITORY_MERGE_POLICY] 官方 Review 尚非 required check，仓库必须关闭 Auto-merge"
+        )
 
     workflows = gh_api_paginated(repo, "actions/workflows", "workflows")
     for workflow in workflows:

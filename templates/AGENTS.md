@@ -27,7 +27,7 @@
 
 - 只报告可证实且会造成实际影响的问题；尤其关注正确性、性能、回归、安全、隐私、权限、可维护性等风险。
 - 检查数据/API 与跨仓协议兼容、CI/CD 权限边界、失败/回滚路径及测试能否证明这些高风险行为。
-- 把 PR 说明和已有测试视为待验证声明，不重复 lint、格式化或纯风格意见，不要求与当前风险无关的工作；项目重点：PROJECT_REPLACE_REVIEW_RULES
+- 把 PR 说明和已有测试视为待验证声明，不重复 lint、格式化或纯风格意见，不要求与当前风险无关的工作；官方 Review 当前不是 required check，且 GitHub 对有写权限者推送新提交不保证自动关闭 Auto-merge；v1 暂不允许对单个 PR 开启 Auto-merge，只在 Review 当前 HEAD、全部 review thread 已解决后人工合并；项目重点：PROJECT_REPLACE_REVIEW_RULES
 
 ## CI/CD 公共门禁
 
@@ -42,6 +42,7 @@
 - 发布、手动部署、self-hosted、`dev` Environment 和发布 secret 能力只存在于唯一受控 release workflow；按真实拓扑维护 `.github/release-safety.yml`，不要把模板 job/step ID 当成公共事实。
 - 项目可执行契约测试负责证明 ref/内容 ID、容器内 smoke、回滚命令和实际目标 SHA；固定 `100755` wrapper 内部调用项目测试，`PR container validation` job 名称必须唯一、无依赖且无条件执行，workflow/job/targeted step 不得自定义 shell 或工作目录，targeted step 只以精确单行 `run` 执行 manifest 声明路径。中央审计只验证 manifest 与结构化 YAML 高层约束，不解释任意 shell 控制流。
 - `master` 要求 GitHub Actions 产生的 `PR container validation`，启用 strict、管理员保护和对话解决，禁止 force push 与删除。
+- 官方 Review 尚非当前 HEAD 的 required check 时，仓库保持 `allow_auto_merge=false`；只在 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功后人工合并。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才设置 `delete_branch_on_merge=true`。
 
 ## 项目命令
 
