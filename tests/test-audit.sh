@@ -186,6 +186,7 @@ assert "不得降低" in contract
 for document in (template, root_agents):
     assert "## Code Review Rules" in document
     assert len(section_bullets(document, "## Code Review Rules")) == 3
+assert "性能" in section_bullets(template, "## Code Review Rules")[0]
 for document in (review_contract, readme, maintenance):
     for marker in (
         "官方 Codex Code Review",
