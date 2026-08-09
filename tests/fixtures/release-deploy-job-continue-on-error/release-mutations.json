@@ -1,0 +1,1 @@
+[["  deploy:\n    name: Deploy master image\n", "  deploy:\n    name: Deploy master image\n    continue-on-error: ${{ github.event_name == 'push' }}\n"]]

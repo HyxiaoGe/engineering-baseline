@@ -79,7 +79,44 @@ if not candidate.is_file():
     candidate = Path(good_dir) / relative
 if not candidate.is_file():
     raise SystemExit(f"fixture 内容不存在: {path}")
-content = base64.b64encode(candidate.read_bytes()).decode("ascii")
+raw = candidate.read_text()
+mutation_name = {
+    ".github/workflows/release.yml": "release-mutations.json",
+    ".github/release-safety.yml": "manifest-mutations.json",
+}.get(path)
+mutation_path = Path(case_dir) / mutation_name if mutation_name else None
+if mutation_path is not None and mutation_path.is_file():
+    mutations = json.loads(mutation_path.read_text())
+    for mutation in mutations:
+        if isinstance(mutation, list):
+            old, new = mutation
+            if raw.count(old) != 1:
+                raise SystemExit(f"fixture 变更目标必须唯一: {old!r}")
+            raw = raw.replace(old, new)
+            continue
+        if mutation.get("op") == "replace_all":
+            old = mutation["old"]
+            new = mutation["new"]
+            if old not in raw:
+                raise SystemExit(f"fixture 全局变更目标不存在: {old!r}")
+            raw = raw.replace(old, new)
+            continue
+        if mutation.get("op") != "move_block_before":
+            raise SystemExit(f"未知 fixture 变更操作: {mutation!r}")
+        start_marker = mutation["start"]
+        end_marker = mutation["end"]
+        before_marker = mutation["before"]
+        if raw.count(start_marker) != 1 or raw.count(before_marker) != 1:
+            raise SystemExit(f"fixture 块移动标记必须唯一: {mutation!r}")
+        start = raw.index(start_marker)
+        if end_marker not in raw[start + len(start_marker):]:
+            raise SystemExit(f"fixture 块移动结束标记不存在: {mutation!r}")
+        end = raw.index(end_marker, start)
+        block = raw[start:end]
+        raw = raw[:start] + raw[end:]
+        before = raw.index(before_marker)
+        raw = raw[:before] + block + raw[before:]
+content = base64.b64encode(raw.encode()).decode("ascii")
 print(json.dumps({"content": content, "encoding": "base64"}))
 PY
     ;;

@@ -22,19 +22,23 @@
 ## 新项目接入
 
 1. 在独立 worktree 中复制 `templates/AGENTS.md`，替换占位符并补齐项目内部规则；项目规则不得降低公共 MUST。
-2. 复制并按项目实际情况改造 `templates/` 下的 PR 与 release workflow。
+2. 复制并按项目实际情况改造 `templates/` 下的 PR、release workflow、`release-safety.yml` 与 `release-safety-contract.sh`；把后两者分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 的 Git mode 为 `100755`，并映射项目真实 job/step 拓扑。
 3. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
-4. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
+4. 通过一次 master 发布证明 Environment-only secret、旧运行态捕获、候选镜像身份、容器内 smoke、成功后清理和 `DEPLOY_TARGET_SHA` 发布证据。
 5. 将 `owner/repo` 追加到 `repositories.txt`。
 6. 将仓库名追加到中央 `.github/workflows/baseline-drift-audit.yml` 的 `repositories` 显式列表；测试会要求该列表与清单顺序一致。
 7. 把只读 GitHub App `Engineering Baseline Auditor` 的安装范围扩展到新仓库；纳管项目不得保存 App 私钥或个人访问令牌。
 8. 运行 fixture 测试，并在基线仓库人工触发中央 live 审计；两者都成功后才算纳入基线。
 
+固定 wrapper 内部可以复用既有语言或容器测试；`PR container validation` job 名称必须全局唯一、无 `if`、无 `needs`、无有效 `continue-on-error`，workflow/job 不得覆盖默认 `shell` 或 `working-directory`。manifest 映射的主 PR targeted step 必须以单行 `run` 精确等于 wrapper 路径，不能附加参数、前后命令、`;`、管道或 `||`，也不能声明 `if`、`continue-on-error`、`shell`、`working-directory`，或把 ID 挂到 checkout、`echo`、`test -f` 与不相关的完整构建步骤。
+
+prepare 存在时，publish、migration 与 deploy 必须使用 `needs.<prepare>.outputs.<合法ID>` 指向同一个真实 output signal，deploy 的两条路径还必须共同要求 prepare 成功；prepare 不存在时只能使用 `github.event.inputs.rollback_sha`，且 deploy 的手动回滚分支必须同时要求 `github.event_name == 'workflow_dispatch'`。rollback step condition 只能由 `failure()`、mapped capture 成功和 mapped candidate 已进入三类原子各一次组成。release workflow 的所有 job 都必须保持失败可见，concurrency 不得按 inputs、matrix、job 或运行编号分域。
+
 ## 修改公共规则
 
 1. 先在 `contracts/ci-cd-baseline.md` 明确公共 MUST 与项目扩展点，避免把单个项目细节升格为通用规则。
 2. 为审计器补充能够复现旧实现缺口的失败 fixture，取得 RED 后再修改实现。
-3. 同步模板、已知 Action SHA/版本映射和 README。
+3. 同步模板 profile、manifest schema、已知 Action SHA/版本映射和 README。
 4. 执行：
 
    ```bash
@@ -58,9 +62,21 @@
 4. 中央审计的 GitHub App `Engineering Baseline Auditor` 只允许 `Administration: read`、`Actions: read`、`Contents: read`、`Environments: read`、`Metadata: read`、`Secrets: read`，不订阅 webhook 事件且不授予写权限；其中 Metadata 是 GitHub 强制只读权限。
 5. App Client ID 使用 repository variable；私钥只存放在基线仓库的 `audit` Environment。禁止把 App 私钥下发到项目，也禁止保存个人访问令牌。
 
+## 发布安全演练
+
+1. 正常 master 发布使用 merge SHA 作为 `DEPLOY_TARGET_SHA`，保存候选 ref、内容 ID、容器内 smoke 和 finalize 证据。
+2. 人工触发现有 release workflow，填写已存在镜像的 40 位小写 `rollback_sha` 与非空原因；确认 publish 登录/构建/push 和迁移全部跳过。
+3. 演练候选部署或验收失败，确认 capture 只接受受管 `IMAGE_NAME:<40 位小写 SHA>` 和 `sha256:<64 位小写十六进制>` 内容 ID，且只在 capture 成功、候选部署已进入后自动恢复；恢复后同时核对旧 image ref、内容 ID 并执行容器内 smoke。
+4. 确认原发布仍为失败；恢复失败也不得被隐藏，旧镜像清理不得以 `always()` 运行。发布证据、metrics 和 finalize 必须记录实际 `DEPLOY_TARGET_SHA`。
+5. 迁移只采用 expand/contract，禁止自动执行 `alembic downgrade`；应用镜像恢复不执行数据库降级。
+6. 首次部署无旧镜像时默认 fail-closed。确需首次部署时，单独审批一次性例外并保存证据，不得长期弱化 capture 门禁。
+7. 检查所有 active workflow；self-hosted、`dev` Environment、secret、镜像拉取/编排或手动部署能力不得散落在受控 release 之外，注释或 `echo` 文本不能作为运行时安全证据。
+8. 中央审计只验证 manifest 与结构化 YAML 高层约束，不解释任意 shell 控制流；ref/内容 ID、容器内 smoke、回滚命令和实际目标 SHA 必须由项目可执行契约测试与真实演练证明。
+9. 同步修改 workflow 与 manifest 不能覆盖公共语义：publish/deploy/finalize 必须 master guarded，publish/migration 必须跳过 rollback，deploy 必须显式区分 publish success 与 rollback+publish skipped，rollback 只能使用允许的 failure/capture/candidate 合取式。
+
 ## 漂移处理
 
-- 先依据稳定错误码定位公共 MUST，例如 `[ACTION_PIN]`、`[REQUIRED_CHECK_APP]`、`[SECRET_ENV_BOUNDARY]`。
+- 先依据稳定错误码定位公共 MUST，例如 `[ACTION_PIN]`、`[REQUIRED_CHECK_APP]`、`[SECRET_ENV_BOUNDARY]`、`[RELEASE_MANIFEST]`、`[ROLLBACK_CAPTURE]` 或 `[RELEASE_FAILURE_STATE]`。
 - 所有持久修复都从目标仓库的独立分支经 PR 进入 master，不直接修改 dev 服务器代码。
 - 修复后重新执行目标仓库 PR、master 发布、部署身份/健康验收和全清单审计。
 - 新的通用缺口必须沉淀为 fixture；只修项目而不增强审计器，会留下相同漂移再次发生的入口。

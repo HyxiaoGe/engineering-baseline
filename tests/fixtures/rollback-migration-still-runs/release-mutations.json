@@ -1,0 +1,6 @@
+[
+  [
+    "      - name: 执行向前兼容迁移\n        id: migrate\n        if: needs.validate_release.outputs.rollback_mode != 'true'",
+    "      - name: 执行向前兼容迁移\n        id: migrate\n        if: always()"
+  ]
+]

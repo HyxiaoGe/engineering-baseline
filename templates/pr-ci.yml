@@ -29,6 +29,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      # 固定 wrapper 内部调用项目自己的语言/容器合同测试；此 step 不得添加参数、管道或兜底命令。
+      - name: 执行发布安全契约测试
+        id: release_safety_contract
+        run: .github/scripts/release-safety-contract.sh
+
       # PROJECT_REPLACE：该脚本必须执行安装、lint、完整测试、生产构建和 docker build；不得登录或 push。
       - name: 执行 PR 完整验证
         run: ./scripts/ci-pr-validate.sh

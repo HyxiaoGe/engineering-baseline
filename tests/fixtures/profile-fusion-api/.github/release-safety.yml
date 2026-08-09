@@ -1,0 +1,30 @@
+version: "1"
+workflow: .github/workflows/release.yml
+contract_test: {path: .github/scripts/release-safety-contract.sh, pr_step: release_safety_contract}
+jobs: {prepare: prepare_api, publish: publish_api, deploy: deploy_api_dev, finalize: finalize_api}
+steps:
+  target: resolve_api_target
+  target_job: prepare
+  capture: snapshot_api
+  migrations: [upgrade_api_schema]
+  candidate: replace_api
+  verify: [probe_api]
+  rollback: restore_api
+  cleanup: prune_api
+  failure: keep_api_failure
+  finalize: record_api
+  finalize_failure: fail_api_finalize
+needs:
+  publish: [prepare]
+  deploy: [prepare, publish]
+  finalize: [prepare, publish, deploy]
+conditions:
+  prepare: null
+  publish: github.ref == 'refs/heads/master' && needs.prepare_api.outputs.manual_mode != 'true'
+  deploy: always() && github.ref == 'refs/heads/master' && needs.prepare_api.result == 'success' && (needs.publish_api.result == 'success' || (needs.prepare_api.outputs.manual_mode == 'true' && needs.publish_api.result == 'skipped'))
+  migration: needs.prepare_api.outputs.manual_mode != 'true'
+  rollback: failure() && steps.snapshot_api.outcome == 'success' && steps.replace_api.outputs.entered == 'true'
+  cleanup: success()
+  failure: failure()
+  finalize: always() && github.ref == 'refs/heads/master'
+  finalize_failure: needs.prepare_api.result != 'success' || needs.publish_api.result == 'failure' || needs.deploy_api_dev.result != 'success'

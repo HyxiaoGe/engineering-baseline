@@ -1,0 +1,1 @@
+[["  finalize: always() && github.ref == 'refs/heads/master'\n", "  finalize: always() && github.ref == 'refs/heads/master' && false\n"]]

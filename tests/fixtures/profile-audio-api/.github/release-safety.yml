@@ -1,0 +1,30 @@
+version: "1"
+workflow: .github/workflows/release.yml
+contract_test: {path: .github/scripts/release-safety-contract.sh, pr_step: release_safety_contract}
+jobs: {prepare: null, publish: publish_audio_api, deploy: deploy_audio_api, finalize: finalize_audio_api}
+steps:
+  target: target_audio_api
+  target_job: deploy
+  capture: capture_audio_api
+  migrations: [migrate_audio_api]
+  candidate: restart_audio_api
+  verify: [health_audio_api]
+  rollback: rollback_audio_api
+  cleanup: cleanup_audio_api
+  failure: null
+  finalize: metrics_audio_api
+  finalize_failure: reject_audio_api
+needs:
+  publish: []
+  deploy: [publish]
+  finalize: [publish, deploy]
+conditions:
+  prepare: null
+  publish: github.ref == 'refs/heads/master' && github.event.inputs.rollback_sha == ''
+  deploy: always() && github.ref == 'refs/heads/master' && (needs.publish_audio_api.result == 'success' || (github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_sha != '' && needs.publish_audio_api.result == 'skipped'))
+  migration: github.event_name != 'workflow_dispatch' || github.event.inputs.rollback_sha == ''
+  rollback: failure() && steps.capture_audio_api.outcome == 'success' && steps.restart_audio_api.outcome != 'skipped'
+  cleanup: success()
+  failure: null
+  finalize: always() && github.ref == 'refs/heads/master'
+  finalize_failure: needs.publish_audio_api.result == 'failure' || needs.deploy_audio_api.result != 'success'

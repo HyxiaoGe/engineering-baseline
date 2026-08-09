@@ -29,7 +29,12 @@
 - master 发布 job 和 secret 消费 job 绑定 `dev` Environment；真实部署 job 单独持有部署能力。
 - 所有外部 Action 锁定完整 40 位 SHA并保留版本注释；checkout 设置 `persist-credentials: false`。
 - Docker 凭据按 run、attempt 和 job 隔离并在 `always()` 中清理。
-- 部署后精确比较运行镜像与本次 `GITHUB_SHA`，并从运行容器内部执行项目健康或版本 smoke。
+- 现有 release workflow 通过 `rollback_sha` 和非空原因处理手动回滚；普通发布和回滚共享 concurrency 与 deploy job，回滚模式跳过 publish 和迁移。
+- 迁移与部署前捕获受管 `IMAGE_NAME:<40 位小写 SHA>` 和 `sha256:<64 位小写十六进制>` 内容 ID；候选及自动恢复后都核验这两个身份维度，并从运行容器内部执行项目健康或版本 smoke。
+- 发布证据、metrics 和 finalize 使用实际 `DEPLOY_TARGET_SHA`；恢复成功不覆盖原发布失败，旧镜像只在验收成功后清理。
+- 数据库迁移采用 expand/contract，禁止自动执行 `alembic downgrade`；首次部署无旧镜像时默认 fail-closed，例外必须一次性审批并留证。
+- 发布、手动部署、self-hosted、`dev` Environment 和发布 secret 能力只存在于唯一受控 release workflow；按真实拓扑维护 `.github/release-safety.yml`，不要把模板 job/step ID 当成公共事实。
+- 项目可执行契约测试负责证明 ref/内容 ID、容器内 smoke、回滚命令和实际目标 SHA；固定 `100755` wrapper 内部调用项目测试，`PR container validation` job 名称必须唯一、无依赖且无条件执行，workflow/job/targeted step 不得自定义 shell 或工作目录，targeted step 只以精确单行 `run` 执行 manifest 声明路径。中央审计只验证 manifest 与结构化 YAML 高层约束，不解释任意 shell 控制流。
 - `master` 要求 GitHub Actions 产生的 `PR container validation`，启用 strict、管理员保护和对话解决，禁止 force push 与删除。
 
 ## 项目命令

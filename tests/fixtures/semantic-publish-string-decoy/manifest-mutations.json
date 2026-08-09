@@ -1,0 +1,1 @@
+[["  publish: github.ref == 'refs/heads/master' && needs.validate_release.outputs.rollback_mode != 'true'\n", "  publish: github.ref == 'refs/heads/master' && 'rollback' != 'true'\n"]]

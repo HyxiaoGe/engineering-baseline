@@ -1,0 +1,30 @@
+version: "1"
+workflow: .github/workflows/release.yml
+contract_test: {path: .github/scripts/release-safety-contract.sh, pr_step: release_safety_contract}
+jobs: {prepare: null, publish: publish_audio_ui, deploy: deploy_audio_ui, finalize: finalize_audio_ui}
+steps:
+  target: target_audio_ui
+  target_job: deploy
+  capture: capture_audio_ui
+  migrations: []
+  candidate: restart_audio_ui
+  verify: [health_audio_ui]
+  rollback: rollback_audio_ui
+  cleanup: cleanup_audio_ui
+  failure: null
+  finalize: metrics_audio_ui
+  finalize_failure: reject_audio_ui
+needs:
+  publish: []
+  deploy: [publish]
+  finalize: [publish, deploy]
+conditions:
+  prepare: null
+  publish: github.ref == 'refs/heads/master' && github.event.inputs.rollback_sha == ''
+  deploy: always() && github.ref == 'refs/heads/master' && (needs.publish_audio_ui.result == 'success' || (github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_sha != '' && needs.publish_audio_ui.result == 'skipped'))
+  migration: null
+  rollback: failure() && steps.capture_audio_ui.outcome == 'success' && steps.restart_audio_ui.outcome != 'skipped'
+  cleanup: success()
+  failure: null
+  finalize: always() && github.ref == 'refs/heads/master'
+  finalize_failure: needs.publish_audio_ui.result == 'failure' || needs.deploy_audio_ui.result != 'success'

@@ -1,0 +1,6 @@
+[
+  [
+    "        id: preserve_failure\n        if: ${{ failure() }}",
+    "        id: preserve_failure\n        if: ${{ always() }}"
+  ]
+]

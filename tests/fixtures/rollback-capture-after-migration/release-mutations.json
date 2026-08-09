@@ -1,0 +1,8 @@
+[
+  {
+    "op": "move_block_before",
+    "start": "      - name: 捕获当前运行镜像\n",
+    "end": "      - name: 执行向前兼容迁移\n",
+    "before": "      - name: 部署候选镜像\n"
+  }
+]

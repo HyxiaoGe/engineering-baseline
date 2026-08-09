@@ -1,0 +1,1 @@
+[["  publish:\n    name: Publish master image\n", "  publish:\n    name: Publish master image\n    continue-on-error: true\n"]]

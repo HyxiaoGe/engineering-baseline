@@ -10,12 +10,12 @@
 
 1. 从独立 Git worktree 创建变更分支，避免污染长期开发目录。
 2. 复制 `templates/AGENTS.md` 到项目根目录，替换全部 `PROJECT_REPLACE` 项并补齐项目内部规则。
-3. 复制 `templates/pr-ci.yml` 和 `templates/release.yml`，替换所有 `PROJECT_REPLACE` 项。
-4. 在仓库内实现项目自己的 PR 验证、镜像发布、部署、容器内 smoke 和发布收尾脚本。
+3. 复制 `templates/pr-ci.yml`、`templates/release.yml`、`templates/release-safety.yml` 和 `templates/release-safety-contract.sh`；将后两份分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 为 `100755`，再替换所有 `PROJECT_REPLACE` 项。
+4. 在仓库内实现项目自己的 PR 验证、镜像发布、向前迁移、部署、自动恢复、容器内 smoke、成功后镜像清理和发布收尾脚本；由固定 wrapper 调用项目语言或容器内的可执行契约测试，并让 manifest 声明 wrapper 与 PR 稳定步骤 ID。
 5. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
 6. 为 `master` 启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
 7. 在真实 PR 上先让新检查通过，再原子替换旧 required check；不要先删除旧门禁。
-8. 合并后核对运行容器的实际镜像 tag 与 merge SHA，并执行容器内部 smoke。
+8. 合并后核对运行容器的 image ref、内容 ID 与 `DEPLOY_TARGET_SHA`，并执行容器内部 smoke。
 9. 使用只读审计检查规则漂移。
 
 完整 MUST 和项目扩展点见 [contracts/ci-cd-baseline.md](contracts/ci-cd-baseline.md)。
@@ -38,15 +38,26 @@
 
 脚本逐仓输出 `PASS` 或带稳定错误码的 `FAIL`，任一仓库漂移时整体退出码为 `1`。参数或本地依赖错误退出码为 `2`。
 
+发布安全相关错误码包括 `[RELEASE_MANIFEST]`、`[RELEASE_WORKFLOW]`、`[RELEASE_CONCURRENCY]`、`[ROLLBACK_TARGET]`、`[ROLLBACK_GUARD]`、`[ROLLBACK_CAPTURE]` 和 `[RELEASE_FAILURE_STATE]`；它们分别定位项目适配、发布入口、串行边界、不可变目标、路径 guard、步骤顺序和失败状态保持。
+
 审计覆盖：
 
 - active PR/master workflows 的事件和权限边界；
+- 所有 active workflow 的 self-hosted、`dev` Environment、secret、镜像拉取/编排和手动部署能力；受控 release 之外发现任一发布入口即 fail-closed；
 - GitHub 平台内建的 `dynamic/dependabot/update-graph` 会被明确跳过；其他 active workflow 若无法从 `master` 读取则 fail-closed；
 - 固定 PR 检查名与 runner 边界；
 - 外部 Action 的 40 位 SHA 和版本注释；
 - `dev` Environment、active workflow 所引用的 secret 名称边界；
-- 容器内 smoke、运行镜像身份和 `GITHUB_SHA` 核验标记；
+- `.github/release-safety.yml` 的 schema、语义 job/step 引用、依赖、condition 映射和步骤全序；
+- `rollback_sha`/原因输入、发布与回滚串行锁、Environment、失败状态及成功后清理等可由结构化 YAML 可靠判断的高层约束；
+- 项目发布安全契约 wrapper 是 Git tree 中 mode `100755` 的普通文件；`PR container validation` job 名称在所有 active workflow 中唯一，job 无 `if`、无 `needs`、无有效 `continue-on-error`，workflow/job 不得覆盖默认 `shell` 或 `working-directory`；稳定步骤必须以单行 `run` 精确执行该路径，不带参数、前后命令、管道或兜底逻辑，也不得声明 `if`、`continue-on-error`、`shell` 或 `working-directory`；
+- prepare 存在时，publish、migration 与 deploy 只能共享 manifest 映射 prepare job 的同一个合法 output signal，deploy 还必须让正常与回滚路径共同受 `needs.<prepare>.result == 'success'` 约束；prepare 不存在时只能共享 `github.event.inputs.rollback_sha`，手动回滚分支还必须显式限定 `workflow_dispatch`；
+- release workflow 的所有 job 都不得启用 `continue-on-error`；发布与回滚 concurrency 只能使用常量、允许的 `github.repository/workflow/ref/ref_name`，或仅由这些 context 构成的 `format(...)`；
+- publish/deploy/finalize 的 master 边界、normal/rollback 分支、migration 跳过回滚和 rollback 允许式不能只靠 manifest 自我声明，中央会独立验证公共语义；
+- release 内未声明的特权 job、job 级写权限、动态分域 concurrency 和未锁定 digest 的 `docker://` Action；
 - `master` branch protection 和 required check。
+
+中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。这些运行时事实由项目自己的可执行契约测试与真实发布验收负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
 
 本地 fixture 自测：
 
@@ -79,4 +90,8 @@ GitHub App 名为 `Engineering Baseline Auditor`，只允许安装到 `@HyxiaoGe
 
 ## 不由模板决定的内容
 
-项目自行决定语言、包管理器、测试命令、端口、容器名、镜像名、迁移步骤、服务数量、smoke URL/命令和通知实现。模板只提供替换点，复制后必须结合项目真实行为完成验证。
+项目自行决定语言、包管理器、测试命令、job/step ID、是否需要 prepare/finalize、端口、容器名、镜像名、迁移步骤、服务数量、smoke URL/命令和通知实现。模板只是一种 profile，不是中央审计的事实源；项目必须按真实拓扑维护 `.github/release-safety.yml`，并结合真实行为完成验证。
+
+数据库迁移必须采用 expand/contract，禁止自动执行 `alembic downgrade`；镜像恢复只恢复应用运行态，不宣称回滚数据库。捕获的旧 ref 必须是受管 `IMAGE_NAME:<40 位小写 SHA>`，内容 ID 必须是 `sha256:<64 位小写十六进制>`。首次部署没有可捕获的旧镜像时默认 fail-closed，若必须放行，应走独立的一次性审批与可审计例外，完成后立即恢复标准门禁。
+
+手动回滚不使用第二份 workflow：在现有 release 的 `workflow_dispatch` 填写 40 位小写 `rollback_sha` 和非空原因。同一 deploy job 使用该值作为 `DEPLOY_TARGET_SHA`，跳过 publish 和迁移，完成身份与容器内 smoke；留空两个输入则仍补跑当前 `GITHUB_SHA`。

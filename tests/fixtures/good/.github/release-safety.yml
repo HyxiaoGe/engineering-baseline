@@ -1,0 +1,36 @@
+version: "1"
+workflow: .github/workflows/release.yml
+contract_test:
+  path: .github/scripts/release-safety-contract.sh
+  pr_step: release_safety_contract
+jobs:
+  prepare: validate_release
+  publish: publish
+  deploy: deploy
+  finalize: finalize
+steps:
+  target: release_target
+  target_job: prepare
+  capture: capture_previous
+  migrations: [migrate]
+  candidate: candidate_deploy
+  verify: [verify_candidate]
+  rollback: rollback_previous
+  cleanup: cleanup_images
+  failure: preserve_failure
+  finalize: finalize_release
+  finalize_failure: finalize_failure
+needs:
+  publish: [prepare]
+  deploy: [prepare, publish]
+  finalize: [prepare, publish, deploy]
+conditions:
+  prepare: github.ref == 'refs/heads/master'
+  publish: github.ref == 'refs/heads/master' && needs.validate_release.outputs.rollback_mode != 'true'
+  deploy: always() && github.ref == 'refs/heads/master' && needs.validate_release.result == 'success' && (needs.publish.result == 'success' || (needs.validate_release.outputs.rollback_mode == 'true' && needs.publish.result == 'skipped'))
+  migration: needs.validate_release.outputs.rollback_mode != 'true'
+  rollback: failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true'
+  cleanup: success()
+  failure: failure()
+  finalize: always() && github.ref == 'refs/heads/master'
+  finalize_failure: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'

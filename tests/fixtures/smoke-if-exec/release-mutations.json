@@ -1,0 +1,6 @@
+[
+  [
+    "docker exec \"${CONTAINER_NAME}\" ./scripts/ci-container-smoke.sh \"${DEPLOY_TARGET_SHA}\"",
+    "if docker exec \"${CONTAINER_NAME}\" ./scripts/ci-container-smoke.sh \"${DEPLOY_TARGET_SHA}\"; then\n            exit 0\n          fi\n          exit 1"
+  ]
+]

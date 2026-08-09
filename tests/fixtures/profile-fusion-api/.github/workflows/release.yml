@@ -1,0 +1,61 @@
+name: Fusion API release
+on:
+  push: {branches: [master]}
+  workflow_dispatch:
+    inputs:
+      rollback_sha: {required: false, type: string}
+      rollback_reason: {type: string}
+permissions: {contents: read}
+concurrency: {group: "${{ github.workflow }}-${{ github.ref }}", cancel-in-progress: false}
+jobs:
+  prepare_api:
+    runs-on: ubuntu-latest
+    outputs:
+      manual_mode: ${{ steps.resolve_api_target.outputs.manual_mode }}
+      target: ${{ steps.resolve_api_target.outputs.target }}
+    steps:
+      - id: resolve_api_target
+        run: ./scripts/release-target-api.sh
+  publish_api:
+    needs: prepare_api
+    if: github.ref == 'refs/heads/master' && needs.prepare_api.outputs.manual_mode != 'true'
+    runs-on: [self-hosted, Windows, X64]
+    environment: {name: dev, deployment: false}
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with: {username: "${{ secrets.ACR_USER }}", password: "${{ secrets.ACR_PASSWORD }}"}
+      - run: docker push example/fusion-api:${{ needs.prepare_api.outputs.target }}
+  deploy_api_dev:
+    needs: [prepare_api, publish_api]
+    if: ${{ always() && github.ref == 'refs/heads/master' && needs.prepare_api.result == 'success' && (needs.publish_api.result == 'success' || (needs.prepare_api.outputs.manual_mode == 'true' && needs.publish_api.result == 'skipped')) }}
+    runs-on: [self-hosted, Linux, X64]
+    environment: {name: dev}
+    steps:
+      - id: snapshot_api
+        run: ./scripts/capture-api.sh
+      - id: upgrade_api_schema
+        if: needs.prepare_api.outputs.manual_mode != 'true'
+        run: ./scripts/migrate-api.sh
+      - id: replace_api
+        run: ./scripts/deploy-api.sh
+      - id: probe_api
+        run: ./scripts/test-api-release.sh
+      - id: restore_api
+        if: ${{ failure() && steps.snapshot_api.outcome == 'success' && steps.replace_api.outputs.entered == 'true' }}
+        run: ./scripts/rollback-api.sh
+      - id: prune_api
+        if: ${{ success() }}
+        run: docker image prune --force
+      - id: keep_api_failure
+        if: ${{ failure() }}
+        run: exit 1
+  finalize_api:
+    needs: [prepare_api, publish_api, deploy_api_dev]
+    if: ${{ always() && github.ref == 'refs/heads/master' }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: record_api
+        run: ./scripts/record-api-release.sh
+      - id: fail_api_finalize
+        if: needs.prepare_api.result != 'success' || needs.publish_api.result == 'failure' || needs.deploy_api_dev.result != 'success'
+        run: exit 1

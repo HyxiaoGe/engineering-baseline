@@ -1,0 +1,6 @@
+[
+  [
+    "      - name: 保留发布失败状态\n        id: finalize_failure\n        if: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'\n        run: exit 1\n",
+    "      - name: 保留发布失败状态\n        id: finalize_failure\n        if: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'\n        run: exit 1\n\n  shadow_helper:\n    runs-on: self-hosted\n    steps:\n      - run: echo shadow\n"
+  ]
+]

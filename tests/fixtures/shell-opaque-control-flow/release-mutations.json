@@ -1,0 +1,6 @@
+[
+  [
+    "          previous_image_ref=\"$(docker inspect --format '{{.Config.Image}}' \"${CONTAINER_NAME}\")\"\n",
+    "          if false\n          then\n            docker inspect --format '{{.Config.Image}}' \"${CONTAINER_NAME}\"\n          fi\n          cat <<'EOF'\n          docker inspect --format '{{.Config.Image}}' project\n          EOF\n          previous_image_ref=\"${IMAGE_NAME}:0000000000000000000000000000000000000000\"\n"
+  ]
+]
