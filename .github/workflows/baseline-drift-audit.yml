@@ -50,7 +50,9 @@ jobs:
           .audit-venv/bin/python -m pip install \
             --disable-pip-version-check \
             --no-input \
-            PyYAML==6.0.3
+            PyYAML==6.0.3 \
+            markdown-it-py==3.0.0 \
+            mdurl==0.1.2
 
       - name: Audit maintained repositories
         env:

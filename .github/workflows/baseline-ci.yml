@@ -35,6 +35,8 @@ jobs:
             --disable-pip-version-check \
             --no-input \
             PyYAML==6.0.3 \
+            markdown-it-py==3.0.0 \
+            mdurl==0.1.2 \
             ruff==0.15.10
 
       - name: Validate source and fixtures

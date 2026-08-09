@@ -1,1 +1,1 @@
-{"sha":"fixture","truncated":false,"tree":[{"path":"ci/actions/secret-reader/action.yml","mode":"100644","type":"blob"}]}
+{"sha":"fixture","truncated":false,"tree":[{"path":"AGENTS.md","mode":"100644","type":"blob"},{"path":"ci/actions/secret-reader/action.yml","mode":"100644","type":"blob"}]}

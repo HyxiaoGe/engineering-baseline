@@ -9,20 +9,27 @@
 ## 接入顺序
 
 1. 从独立 Git worktree 创建变更分支，避免污染长期开发目录。
-2. 复制 `templates/AGENTS.md` 到项目根目录，替换全部 `PROJECT_REPLACE` 项并补齐项目内部规则。
-3. 复制 `templates/pr-ci.yml`、`templates/release.yml`、`templates/release-safety.yml` 和 `templates/release-safety-contract.sh`；将后两份分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 为 `100755`，再替换所有 `PROJECT_REPLACE` 项。
-4. 在仓库内实现项目自己的 PR 验证、镜像发布、向前迁移、部署、自动恢复、容器内 smoke、成功后镜像清理和发布收尾脚本；由固定 wrapper 调用项目语言或容器内的可执行契约测试，并让 manifest 声明 wrapper 与 PR 稳定步骤 ID。
-5. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
-6. 为 `master` 启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
-7. 在真实 PR 上先让新检查通过，再原子替换旧 required check；不要先删除旧门禁。
-8. 合并后核对运行容器的 image ref、内容 ID 与 `DEPLOY_TARGET_SHA`，并执行容器内部 smoke。
-9. 使用只读审计检查规则漂移。
+2. 复制 `templates/AGENTS.md` 到项目根目录，替换全部 `PROJECT_REPLACE` 项并补齐项目内部规则，保留精确标题 `## Code Review Rules`。
+3. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`；规则只决定审查重点，不负责触发，人工兜底使用 `@codex review`。
+4. 复制 `templates/pr-ci.yml`、`templates/release.yml`、`templates/release-safety.yml` 和 `templates/release-safety-contract.sh`；将后两份分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 为 `100755`，再替换所有 `PROJECT_REPLACE` 项。
+5. 在仓库内实现项目自己的 PR 验证、镜像发布、向前迁移、部署、自动恢复、容器内 smoke、成功后镜像清理和发布收尾脚本；由固定 wrapper 调用项目语言或容器内的可执行契约测试，并让 manifest 声明 wrapper 与 PR 稳定步骤 ID。
+6. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
+7. 为 `master` 启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
+8. 在真实 PR 上先让新检查通过，再原子替换旧 required check；不要先删除旧门禁。
+9. 合并后核对运行容器的 image ref、内容 ID 与 `DEPLOY_TARGET_SHA`，并执行容器内部 smoke。
+10. 使用只读审计检查规则漂移。
 
-完整 MUST 和项目扩展点见 [contracts/ci-cd-baseline.md](contracts/ci-cd-baseline.md)。
+完整 MUST 和项目扩展点见 [CI/CD 公共契约](contracts/ci-cd-baseline.md) 与 [官方 Codex Code Review 治理契约](contracts/codex-code-review.md)。
+
+## 官方 Codex Code Review
+
+基线只接入和治理官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或评论协议。自动唤醒使用官方 `Automatic reviews`；没有自动触发或需要重审时，在 PR 评论使用 `@codex review`。
+
+根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应优先检查哪些项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。v1 保持观察模式，不增加 required check，不改变现有 branch protection；官方设置通过真实 PR 验收，中央审计只验证仓库内可稳定读取的规则文件。完整边界见 [官方治理契约](contracts/codex-code-review.md)。
 
 ## 只读审计
 
-前置条件：已安装并登录 `gh`，安装 `Python 3` 与 `PyYAML>=6`，当前身份对目标仓库至少具有读取 Actions、Environment、branch protection 和 secret 名称元数据的权限。
+前置条件：已安装并登录 `gh`，安装 `Python 3`、`PyYAML>=6`、`markdown-it-py==3.0.0` 与 `mdurl==0.1.2`，当前身份对目标仓库至少具有读取 Actions、Environment、branch protection 和 secret 名称元数据的权限。
 
 ```bash
 ./scripts/audit-github-baseline.sh \
@@ -38,11 +45,12 @@
 
 脚本逐仓输出 `PASS` 或带稳定错误码的 `FAIL`，任一仓库漂移时整体退出码为 `1`。参数或本地依赖错误退出码为 `2`。
 
-发布安全相关错误码包括 `[RELEASE_MANIFEST]`、`[RELEASE_WORKFLOW]`、`[RELEASE_CONCURRENCY]`、`[ROLLBACK_TARGET]`、`[ROLLBACK_GUARD]`、`[ROLLBACK_CAPTURE]` 和 `[RELEASE_FAILURE_STATE]`；它们分别定位项目适配、发布入口、串行边界、不可变目标、路径 guard、步骤顺序和失败状态保持。
+发布安全相关错误码包括 `[RELEASE_MANIFEST]`、`[RELEASE_WORKFLOW]`、`[RELEASE_CONCURRENCY]`、`[ROLLBACK_TARGET]`、`[ROLLBACK_GUARD]`、`[ROLLBACK_CAPTURE]` 和 `[RELEASE_FAILURE_STATE]`；它们分别定位项目适配、发布入口、串行边界、不可变目标、路径 guard、步骤顺序和失败状态保持。`[CODE_REVIEW_RULES]` 表示根 `AGENTS.md` 缺失、不是普通文件，或 CommonMark 解析后不存在源码行精确等于 `## Code Review Rules` 的真实 h2；fenced code、HTML block、autolink 与 inline code 等边界由固定 markdown-it-py parser 判定。
 
 审计覆盖：
 
 - active PR/master workflows 的事件和权限边界；
+- 根 `AGENTS.md` 的普通文件属性与精确 `## Code Review Rules` 标题；
 - 所有 active workflow 的 self-hosted、`dev` Environment、secret、镜像拉取/编排和手动部署能力；受控 release 之外发现任一发布入口即 fail-closed；
 - GitHub 平台内建的 `dynamic/dependabot/update-graph` 会被明确跳过；其他 active workflow 若无法从 `master` 读取则 fail-closed；
 - 固定 PR 检查名与 runner 边界；
@@ -57,7 +65,7 @@
 - release 内未声明的特权 job、job 级写权限、动态分域 concurrency 和未锁定 digest 的 `docker://` Action；
 - `master` branch protection 和 required check。
 
-中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。这些运行时事实由项目自己的可执行契约测试与真实发布验收负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
+中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置和模型审查质量；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR Review 负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
 
 本地 fixture 自测：
 

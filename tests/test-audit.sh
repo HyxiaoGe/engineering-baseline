@@ -154,7 +154,23 @@ import sys
 
 root = Path(sys.argv[1])
 template = (root / "templates" / "AGENTS.md").read_text()
+root_agents = (root / "AGENTS.md").read_text()
 contract = (root / "contracts" / "ci-cd-baseline.md").read_text()
+review_contract = (root / "contracts" / "codex-code-review.md").read_text()
+readme = (root / "README.md").read_text()
+maintenance = (root / "MAINTENANCE.md").read_text()
+audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
+audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
+
+def section_bullets(document, heading):
+    lines = document.splitlines()
+    start = lines.index(heading) + 1
+    section = []
+    for line in lines[start:]:
+        if line.startswith("## "):
+            break
+        section.append(line)
+    return [line for line in section if line.startswith("- ")]
 
 for marker in (
     "PROJECT_REPLACE",
@@ -167,7 +183,23 @@ for marker in (
 
 assert "AGENTS.md 覆盖边界" in contract
 assert "不得降低" in contract
-print("AGENTS 模板与覆盖契约通过")
+for document in (template, root_agents):
+    assert "## Code Review Rules" in document
+    assert len(section_bullets(document, "## Code Review Rules")) == 3
+for document in (review_contract, readme, maintenance):
+    for marker in (
+        "官方 Codex Code Review",
+        "Automatic reviews",
+        "@codex review",
+        "不自建",
+    ):
+        assert marker in document, (marker, document[:40])
+for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
+    assert marker in audit_entrypoint, marker
+assert 'MarkdownIt("commonmark")' in audit_source
+for forbidden in ("markdown_fence", "raw_html_block_start"):
+    assert forbidden not in audit_source, forbidden
+print("AGENTS 模板、根规则与官方 Code Review 治理契约通过")
 PY
   then
     echo "FAIL: AGENTS 模板或覆盖契约不满足"
@@ -321,6 +353,8 @@ assert checkout[0]["with"]["persist-credentials"] == "false"
 commands = "\n".join(step.get("run", "") for step in steps)
 for marker in (
     "PyYAML==6.0.3",
+    "markdown-it-py==3.0.0",
+    "mdurl==0.1.2",
     "ruff==0.15.10",
     "shellcheck",
     "ruff check",
@@ -409,6 +443,8 @@ assert scoped_repositories == registry
 
 commands = "\n".join(step.get("run", "") for step in steps)
 assert "PyYAML==6.0.3" in commands
+assert "markdown-it-py==3.0.0" in commands
+assert "mdurl==0.1.2" in commands
 assert "scripts/audit-maintained-repositories.sh" in commands
 audit_steps = [step for step in steps if "audit-maintained-repositories.sh" in step.get("run", "")]
 assert len(audit_steps) == 1
@@ -451,6 +487,15 @@ PY
 }
 
 run_expect_success good
+run_expect_failure code-review-rules-missing "[CODE_REVIEW_RULES]"
+run_expect_failure code-review-rules-symlink "[CODE_REVIEW_RULES]"
+run_expect_failure code-review-rules-heading-missing "[CODE_REVIEW_RULES]"
+run_expect_failure code-review-rules-heading-in-fence "[CODE_REVIEW_RULES]"
+run_expect_failure code-review-rules-heading-in-html-comment "[CODE_REVIEW_RULES]"
+run_expect_failure code-review-rules-heading-in-raw-html "[CODE_REVIEW_RULES]"
+run_expect_success code-review-rules-heading-after-fences
+run_expect_success code-review-rules-heading-after-inline-code
+run_expect_success code-review-rules-heading-after-autolink
 run_expect_failure mutable-action "[ACTION_PIN]"
 run_expect_failure old-required-check "[REQUIRED_CHECK]"
 run_expect_failure missing-dev-environment "[DEV_ENVIRONMENT]"

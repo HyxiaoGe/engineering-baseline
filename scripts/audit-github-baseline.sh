@@ -16,8 +16,8 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 2
 fi
 
-if ! python3 -c 'import yaml; assert int(yaml.__version__.split(".", 1)[0]) >= 6' >/dev/null 2>&1; then
-  echo "缺少 PyYAML>=6；请先安装结构化 YAML 解析依赖" >&2
+if ! python3 -c 'import markdown_it, mdurl, yaml; assert int(yaml.__version__.split(".", 1)[0]) >= 6; assert markdown_it.__version__ == "3.0.0"; assert mdurl.__version__ == "0.1.2"' >/dev/null 2>&1; then
+  echo "缺少固定审计依赖：PyYAML>=6、markdown-it-py==3.0.0、mdurl==0.1.2" >&2
   exit 2
 fi
 
