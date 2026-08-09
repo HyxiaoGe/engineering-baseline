@@ -11,6 +11,7 @@ import sys
 from typing import Any, Iterable
 from urllib.parse import quote
 
+from markdown_it import MarkdownIt
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
@@ -36,6 +37,8 @@ KNOWN_ACTIONS = {
     "docker/login-action": ("dbcb813823bdd20940b903addbd779551569679f", "v4.6.0"),
 }
 ALLOWED_AUX_PERMISSIONS = {"contents": "read", "security-events": "write"}
+CODE_REVIEW_RULES_HEADING = "## Code Review Rules"
+COMMONMARK_PARSER = MarkdownIt("commonmark")
 
 
 class AuditError(RuntimeError):
@@ -614,6 +617,38 @@ def normalized_local_target(target: str) -> str:
     if not path.parts or any(part in ("", ".", "..") for part in path.parts):
         raise AuditError(f"本地 Action 路径发生逃逸或无法规范化：{target}")
     return path.as_posix()
+
+
+def has_code_review_rules_heading(text: str) -> bool:
+    source_lines = text.splitlines()
+    for token in COMMONMARK_PARSER.parse(text):
+        if token.type != "heading_open" or token.tag != "h2" or token.map is None:
+            continue
+        start_line = token.map[0]
+        if (
+            start_line < len(source_lines)
+            and source_lines[start_line] == CODE_REVIEW_RULES_HEADING
+        ):
+            return True
+    return False
+
+
+def inspect_code_review_rules(source: RepositorySource) -> list[str]:
+    path = "AGENTS.md"
+    item = source.tree.get(path)
+    if item is None:
+        return [f"[CODE_REVIEW_RULES] master 缺少根级 {path}"]
+    if item.get("type") != "blob" or item.get("mode") not in {"100644", "100755"}:
+        return [f"[CODE_REVIEW_RULES] 根级 {path} 不是普通文件或属于 symlink"]
+    try:
+        text = repository_content(source.repo, path)
+    except AuditError as error:
+        return [f"[CODE_REVIEW_RULES] 无法从 master 读取根级 {path}：{error}"]
+    if not has_code_review_rules_heading(text):
+        return [
+            f"[CODE_REVIEW_RULES] 根级 {path} 缺少精确标题 {CODE_REVIEW_RULES_HEADING}"
+        ]
+    return []
 
 
 def resolve_local_action(source: RepositorySource, target: str) -> ParsedYaml:
@@ -2045,6 +2080,7 @@ def audit_repository(repo: str) -> list[str]:
             errors.append("[WORKFLOW_LIST] 未找到可解析的 active workflow")
         errors.extend(inspect_action_references(source.workflows.values()))
         errors.extend(inspect_action_references(source.local_actions.values()))
+        errors.extend(inspect_code_review_rules(source))
         errors.extend(inspect_primary_pr(source))
         errors.extend(inspect_auxiliary_pr(source))
         release_errors, referenced_secrets = inspect_release(source)

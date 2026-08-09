@@ -2,7 +2,6 @@
   "sha": "fixture",
   "truncated": false,
   "tree": [
-    {"path": "AGENTS.md", "type": "blob", "mode": "100644"},
     {"path": ".github/release-safety.yml", "type": "blob", "mode": "100644"},
     {"path": ".github/scripts/release-safety-contract.sh", "type": "blob", "mode": "100755"}
   ]
