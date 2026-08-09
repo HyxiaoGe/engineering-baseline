@@ -1,0 +1,1 @@
+[["    if: github.ref == 'refs/heads/master' && needs.validate_release.outputs.rollback_mode != 'true'\n", "    if: github.ref == 'refs/heads/master' && 'rollback' != 'true'\n"]]

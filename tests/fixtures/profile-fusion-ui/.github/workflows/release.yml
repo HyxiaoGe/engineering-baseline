@@ -1,0 +1,40 @@
+name: Fusion UI release
+on:
+  push: {branches: [master]}
+  workflow_dispatch:
+    inputs:
+      rollback_sha: {required: false, default: "", type: string}
+      rollback_reason: {required: false, default: "", type: string}
+permissions: {contents: read}
+concurrency: {group: fusion-ui-release, cancel-in-progress: false}
+jobs:
+  publish_web:
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'workflow_dispatch' || github.event.inputs.rollback_sha == '')
+    runs-on: [self-hosted, Windows, X64]
+    environment: {name: dev, deployment: false}
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with: {username: "${{ secrets.ACR_USER }}", password: "${{ secrets.ACR_PASSWORD }}"}
+      - run: docker push example/fusion-ui:${GITHUB_SHA}
+  deploy_web_dev:
+    needs: publish_web
+    if: ${{ always() && github.ref == 'refs/heads/master' && (needs.publish_web.result == 'success' || (github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_sha != '' && needs.publish_web.result == 'skipped')) }}
+    runs-on: [self-hosted, Linux, X64]
+    environment: {name: dev}
+    steps:
+      - id: choose_web_target
+        run: ./scripts/select-web-image.sh
+      - id: snapshot_web
+        run: ./scripts/capture-web.sh
+      - id: replace_web
+        run: ./scripts/deploy-web.sh
+      - id: container_web_smoke
+        run: ./scripts/container-smoke-web.sh
+      - id: browser_web_smoke
+        run: ./scripts/browser-smoke-web.sh
+      - id: restore_web
+        if: ${{ failure() && steps.snapshot_web.outcome == 'success' && steps.replace_web.outcome != 'skipped' }}
+        run: ./scripts/rollback-web.sh
+      - id: prune_web
+        if: ${{ success() }}
+        run: docker image prune --force

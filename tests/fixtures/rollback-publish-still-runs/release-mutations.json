@@ -1,0 +1,6 @@
+[
+  [
+    "  publish:\n    name: Publish master image\n    needs: validate_release\n    if: github.ref == 'refs/heads/master' && needs.validate_release.outputs.rollback_mode != 'true'",
+    "  publish:\n    name: Publish master image\n    needs: validate_release\n    if: always()"
+  ]
+]

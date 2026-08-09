@@ -1,0 +1,13 @@
+name: PR validation
+on:
+  pull_request: {branches: [master]}
+permissions: {contents: read}
+jobs:
+  validation:
+    name: PR container validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: {persist-credentials: false}
+      - id: release_safety_contract
+        run: python3 .github/scripts/release-safety-contract.sh | tee contract.log

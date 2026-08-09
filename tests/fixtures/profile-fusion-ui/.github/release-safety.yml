@@ -1,0 +1,30 @@
+version: "1"
+workflow: .github/workflows/release.yml
+contract_test: {path: .github/scripts/release-safety-contract.sh, pr_step: release_safety_contract}
+jobs: {prepare: null, publish: publish_web, deploy: deploy_web_dev, finalize: null}
+steps:
+  target: choose_web_target
+  target_job: deploy
+  capture: snapshot_web
+  migrations: []
+  candidate: replace_web
+  verify: [container_web_smoke, browser_web_smoke]
+  rollback: restore_web
+  cleanup: prune_web
+  failure: null
+  finalize: null
+  finalize_failure: null
+needs:
+  publish: []
+  deploy: [publish]
+  finalize: []
+conditions:
+  prepare: null
+  publish: github.ref == 'refs/heads/master' && (github.event_name != 'workflow_dispatch' || github.event.inputs.rollback_sha == '')
+  deploy: always() && github.ref == 'refs/heads/master' && (needs.publish_web.result == 'success' || (github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_sha != '' && needs.publish_web.result == 'skipped'))
+  migration: null
+  rollback: failure() && steps.snapshot_web.outcome == 'success' && steps.replace_web.outcome != 'skipped'
+  cleanup: success()
+  failure: null
+  finalize: null
+  finalize_failure: null

@@ -1,0 +1,6 @@
+[
+  [
+    "        id: rollback_previous\n        if: ${{ failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true' }}",
+    "        id: rollback_previous\n        continue-on-error: ${{ true }}\n        if: ${{ failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true' }}"
+  ]
+]

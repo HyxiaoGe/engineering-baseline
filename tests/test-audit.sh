@@ -80,7 +80,7 @@ known = {
     "docker/login-action": ("dbcb813823bdd20940b903addbd779551569679f", "v4.6.0"),
 }
 seen = set()
-for path in sorted((root / "templates").glob("*.yml")):
+for path in (root / "templates" / "pr-ci.yml", root / "templates" / "release.yml"):
     document = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
     for job in document.get("jobs", {}).values():
         for step in job.get("steps", []):
@@ -171,6 +171,117 @@ print("AGENTS 模板与覆盖契约通过")
 PY
   then
     echo "FAIL: AGENTS 模板或覆盖契约不满足"
+    failures=$((failures + 1))
+  fi
+}
+
+check_release_safety_contract() {
+  if ! python3 - "${ROOT_DIR}" <<'PY'
+from pathlib import Path
+import sys
+
+import yaml
+
+root = Path(sys.argv[1])
+template_path = root / "templates" / "release.yml"
+workflow = yaml.load(template_path.read_text(), Loader=yaml.BaseLoader)
+manifest = yaml.load(
+    (root / "templates" / "release-safety.yml").read_text(),
+    Loader=yaml.BaseLoader,
+)
+pr_workflow = yaml.load(
+    (root / "templates" / "pr-ci.yml").read_text(),
+    Loader=yaml.BaseLoader,
+)
+dispatch = workflow["on"]["workflow_dispatch"]
+assert set(dispatch["inputs"]) == {"rollback_sha", "rollback_reason"}
+assert workflow["concurrency"] == {
+    "group": "master-release",
+    "cancel-in-progress": "false",
+}
+assert set(workflow["jobs"]) == {
+    "validate_release",
+    "publish",
+    "deploy",
+    "finalize",
+}
+assert manifest["workflow"] == ".github/workflows/release.yml"
+assert manifest["jobs"] == {
+    "prepare": "validate_release",
+    "publish": "publish",
+    "deploy": "deploy",
+    "finalize": "finalize",
+}
+assert manifest["steps"]["verify"] == ["verify_candidate"]
+assert manifest["steps"]["migrations"] == ["migrate"]
+assert manifest["contract_test"]["pr_step"] == "release_safety_contract"
+pr_steps = pr_workflow["jobs"]["validation"]["steps"]
+contract_steps = [
+    step for step in pr_steps if step.get("id") == "release_safety_contract"
+]
+assert len(contract_steps) == 1
+assert "if" not in contract_steps[0]
+assert contract_steps[0].get("continue-on-error") not in ("true", True)
+assert contract_steps[0]["run"] == manifest["contract_test"]["path"]
+contract_entry = root / "templates" / "release-safety-contract.sh"
+assert contract_entry.stat().st_mode & 0o111 == 0o111
+assert contract_entry.read_text().startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+deploy = workflow["jobs"]["deploy"]
+step_ids = [step.get("id") for step in deploy["steps"] if step.get("id")]
+assert step_ids == [
+    "capture_previous",
+    "migrate",
+    "candidate_deploy",
+    "verify_candidate",
+    "rollback_previous",
+    "cleanup_images",
+    "preserve_failure",
+]
+assert deploy["steps"][1]["id"] == "capture_previous"
+assert deploy["steps"][-2]["if"] == "${{ success() }}"
+template_text = template_path.read_text()
+for marker in (
+    "DEPLOY_TARGET_SHA",
+    'expected_prefix="${IMAGE_NAME}:"',
+    '[[ "${previous_sha}" =~ ^[0-9a-f]{40}$ ]]',
+    '[[ "${previous_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]',
+    'previous_sha="${PREVIOUS_IMAGE_REF#"${expected_prefix}"}"',
+    '[[ "${previous_sha}" =~ ^[0-9a-f]{40}$ ]]',
+    '[[ "${PREVIOUS_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]',
+    'ci-container-smoke.sh "${previous_sha}"',
+    "id: finalize_release",
+    "id: finalize_failure",
+):
+    assert marker in template_text, marker
+assert 'ci-container-smoke.sh "${PREVIOUS_IMAGE_ID}"' not in template_text
+
+contract_files = [
+    root / "contracts" / "ci-cd-baseline.md",
+    root / "README.md",
+    root / "MAINTENANCE.md",
+    root / "templates" / "AGENTS.md",
+]
+for path in contract_files:
+    text = path.read_text()
+    for marker in (
+        "expand/contract",
+        "禁止自动执行 `alembic downgrade`",
+        "首次部署",
+        "DEPLOY_TARGET_SHA",
+        "rollback_sha",
+        ".github/release-safety.yml",
+    ):
+        assert marker in text, (path, marker)
+
+for path in contract_files[:3]:
+    text = path.read_text()
+    assert "中央审计" in text, path
+    assert "不解释任意 shell" in text or "不声称从原始 shell" in text, path
+
+print("发布安全模板与维护合同通过")
+PY
+  then
+    echo "FAIL: 发布安全模板或维护合同不满足 v1 契约"
     failures=$((failures + 1))
   fi
 }
@@ -362,7 +473,6 @@ run_expect_failure pr-docker-image-push "[PR_DEPLOY]"
 run_expect_failure pr-helm "[PR_DEPLOY]"
 run_expect_failure pr-rsync "[PR_DEPLOY]"
 run_expect_failure fake-check-name "[PR_CHECK_NAME]"
-run_expect_failure fake-smoke "[DEPLOY_SMOKE]"
 run_expect_failure local-action-indirect-deploy "[PR_DEPLOY]"
 run_expect_failure local-action-indirect-secret "[PR_SECRET]"
 run_expect_failure local-action-indirect-mutable "[ACTION_PIN]"
@@ -377,10 +487,82 @@ run_expect_failure unknown-workflow-structure "[WORKFLOW_STRUCTURE]"
 run_expect_success auxiliary-codeql
 run_expect_failure_codes auxiliary-unsafe "[AUX_PR_SECRET]" "[AUX_PR_ENVIRONMENT]" "[AUX_PR_RUNNER]" "[AUX_PR_DEPLOY]"
 run_expect_failure_codes pagination "[AUX_PR_DEPLOY]" "[REPO_SECRET_BOUNDARY]" "STALE_REPOSITORY_SECRET"
-run_expect_failure manual-publish-unguarded-login "[RELEASE_EVENT]"
+run_expect_failure manual-publish-unguarded-login "[ROLLBACK_GUARD]"
 run_expect_failure manual-guard-or-true "[RELEASE_EVENT]"
-run_expect_failure manual-dependent-custom-if "[RELEASE_EVENT]"
-run_expect_failure smoke-no-compare "[DEPLOY_SMOKE]"
+run_expect_failure manual-dependent-custom-if "[ROLLBACK_GUARD]"
+run_expect_failure rollback-capture-after-migration "[ROLLBACK_CAPTURE]"
+run_expect_failure rollback-always-guard "[ROLLBACK_GUARD]"
+run_expect_failure rollback-publish-still-runs "[ROLLBACK_GUARD]"
+run_expect_failure rollback-cleanup-always "[RELEASE_FAILURE_STATE]"
+run_expect_failure release-concurrency-cancel "[RELEASE_CONCURRENCY]"
+run_expect_failure rollback-continue-on-error "[RELEASE_FAILURE_STATE]"
+run_expect_failure failure-continue-on-error "[RELEASE_FAILURE_STATE]"
+run_expect_failure finalize-failure-continue-on-error "[RELEASE_FAILURE_STATE]"
+run_expect_failure rollback-migration-still-runs "[ROLLBACK_GUARD]"
+run_expect_failure rollback-no-failure-preserve "[RELEASE_FAILURE_STATE]"
+run_expect_failure manual-deploy-bypass "[RELEASE_WORKFLOW]"
+run_expect_failure rollback-cleanup-before-rollback "[ROLLBACK_CAPTURE]"
+run_expect_failure rollback-before-candidate "[ROLLBACK_CAPTURE]"
+run_expect_success profile-fusion-api
+run_expect_success profile-fusion-ui
+run_expect_success profile-audio-api
+run_expect_success profile-audio-ui
+run_expect_failure manifest-missing-reference "[RELEASE_MANIFEST]"
+run_expect_failure manifest-duplicate-role "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-conditional "[RELEASE_MANIFEST]"
+run_expect_failure contract-job-conditional "[RELEASE_MANIFEST]"
+run_expect_failure contract-job-continue-on-error "[RELEASE_MANIFEST]"
+run_expect_failure contract-job-needs "[RELEASE_MANIFEST]"
+run_expect_failure contract-check-name-duplicate "[RELEASE_MANIFEST]"
+run_expect_failure contract-file-missing "[RELEASE_MANIFEST]"
+run_expect_failure contract-file-not-executable "[RELEASE_MANIFEST]"
+run_expect_failure contract-continue-on-error "[RELEASE_MANIFEST]"
+run_expect_failure contract-step-continue-on-error-false "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-echo "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-checkout "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-test-file "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-prefixed-true "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-or-true "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-semicolon "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-pipe "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-custom-shell "[RELEASE_MANIFEST]"
+run_expect_failure contract-gate-working-directory "[RELEASE_MANIFEST]"
+run_expect_failure contract-job-default-shell "[RELEASE_MANIFEST]"
+run_expect_failure contract-workflow-default-shell "[RELEASE_MANIFEST]"
+run_expect_failure contract-job-default-working-directory "[RELEASE_MANIFEST]"
+run_expect_failure contract-workflow-default-working-directory "[RELEASE_MANIFEST]"
+run_expect_failure semantic-publish-no-master "[ROLLBACK_GUARD]"
+run_expect_failure semantic-publish-no-rollback "[ROLLBACK_GUARD]"
+run_expect_failure semantic-publish-or-true "[ROLLBACK_GUARD]"
+run_expect_failure semantic-publish-string-decoy "[ROLLBACK_GUARD]"
+run_expect_failure semantic-deploy-no-master "[ROLLBACK_GUARD]"
+run_expect_failure semantic-deploy-implicit-rollback "[ROLLBACK_GUARD]"
+run_expect_failure semantic-deploy-string-decoy "[ROLLBACK_GUARD]"
+run_expect_failure semantic-deploy-normal-dead "[ROLLBACK_GUARD]"
+run_expect_failure semantic-deploy-rollback-dead "[ROLLBACK_GUARD]"
+run_expect_failure semantic-deploy-prepare-result-missing "[ROLLBACK_GUARD]"
+run_expect_failure semantic-migration-no-rollback "[ROLLBACK_GUARD]"
+run_expect_failure semantic-migration-or-true "[ROLLBACK_GUARD]"
+run_expect_failure semantic-migration-string-decoy "[ROLLBACK_GUARD]"
+run_expect_failure semantic-signal-inconsistent "[ROLLBACK_GUARD]"
+run_expect_failure semantic-rollback-or "[ROLLBACK_GUARD]"
+run_expect_failure semantic-rollback-extra-false "[ROLLBACK_GUARD]"
+run_expect_failure semantic-rollback-extra-success "[ROLLBACK_GUARD]"
+run_expect_failure semantic-finalize-no-master "[RELEASE_FAILURE_STATE]"
+run_expect_failure semantic-finalize-extra-false "[RELEASE_FAILURE_STATE]"
+run_expect_failure release-undeclared-self-hosted "[RELEASE_MANIFEST]"
+run_expect_failure release-job-write-permission "[RELEASE_PERMISSION]"
+run_expect_failure release-publish-job-continue-on-error "[RELEASE_FAILURE_STATE]"
+run_expect_failure release-deploy-job-continue-on-error "[RELEASE_FAILURE_STATE]"
+run_expect_success release-job-continue-on-error-false
+run_expect_failure release-concurrency-dynamic "[RELEASE_CONCURRENCY]"
+run_expect_failure release-concurrency-job-dynamic "[RELEASE_CONCURRENCY]"
+run_expect_success release-concurrency-format
+run_expect_failure release-concurrency-format-dynamic "[RELEASE_CONCURRENCY]"
+run_expect_failure docker-action-mutable "[ACTION_PIN]"
+run_expect_success docker-action-digest
+# 中央审计有意不解释多行 shell 控制流；项目可执行契约测试负责拒绝此类伪造。
+run_expect_success shell-opaque-control-flow
 run_expect_success smoke-if-exec
 run_expect_failure release-dynamic-secret "[SECRET_ENV_BOUNDARY]"
 run_expect_failure release-secrets-inherit "[SECRET_ENV_BOUNDARY]"
@@ -390,6 +572,7 @@ run_expect_failure auxiliary-missing-permissions "[AUX_PR_PERMISSION]"
 check_templates
 check_registry_entrypoint
 check_agents_template
+check_release_safety_contract
 check_baseline_ci_workflow
 check_central_audit_entrypoint
 

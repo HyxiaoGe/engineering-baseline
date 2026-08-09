@@ -1,0 +1,8 @@
+[
+  {
+    "op": "move_block_before",
+    "start": "      - name: 仅在验收成功后清理旧镜像\n",
+    "end": "      - name: 保留发布失败状态\n",
+    "before": "      - name: 自动恢复原运行镜像\n"
+  }
+]

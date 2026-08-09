@@ -1,0 +1,1 @@
+[["  rollback: failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true'\n", "  rollback: failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true' && false\n"]]

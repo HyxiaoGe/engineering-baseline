@@ -1,0 +1,6 @@
+[
+  [
+    "        id: finalize_failure\n        if: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'\n",
+    "        id: finalize_failure\n        continue-on-error: ${{ true }}\n        if: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'\n"
+  ]
+]

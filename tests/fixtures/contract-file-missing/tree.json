@@ -1,0 +1,7 @@
+{
+  "sha": "fixture",
+  "truncated": false,
+  "tree": [
+    {"path": ".github/release-safety.yml", "type": "blob", "mode": "100644"}
+  ]
+}

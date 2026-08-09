@@ -1,0 +1,1 @@
+[["  group: master-release\n", "  group: ${{ format('{0}-{1}', github.workflow, github.job) }}\n"]]

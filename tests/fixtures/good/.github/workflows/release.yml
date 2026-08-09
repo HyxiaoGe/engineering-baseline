@@ -4,14 +4,62 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: 要回滚到的 40 位小写镜像 SHA；留空则发布当前提交
+        required: false
+        default: ""
+        type: string
+      rollback_reason:
+        description: 回滚原因；设置 rollback_sha 时必填
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: master-release
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: registry.example/project
+  CONTAINER_NAME: project
+
 jobs:
+  validate_release:
+    name: Validate release target
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    outputs:
+      rollback_mode: ${{ steps.release_target.outputs.rollback_mode }}
+      target_sha: ${{ steps.release_target.outputs.target_sha }}
+    steps:
+      - name: 校验并选择不可变发布目标
+        id: release_target
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ROLLBACK_SHA: ${{ github.event.inputs.rollback_sha || '' }}
+          ROLLBACK_REASON: ${{ github.event.inputs.rollback_reason || '' }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" && -n "${ROLLBACK_SHA}" ]]; then
+            [[ "${ROLLBACK_SHA}" =~ ^[0-9a-f]{40}$ ]] || { echo "rollback_sha 必须是 40 位小写 SHA" >&2; exit 1; }
+            [[ -n "${ROLLBACK_REASON}" ]] || { echo "rollback_reason 不能为空" >&2; exit 1; }
+            echo "rollback_mode=true" >> "${GITHUB_OUTPUT}"
+            echo "target_sha=${ROLLBACK_SHA}" >> "${GITHUB_OUTPUT}"
+          else
+            [[ -z "${ROLLBACK_SHA}" && -z "${ROLLBACK_REASON}" ]] || { echo "回滚参数必须成对提供" >&2; exit 1; }
+            echo "rollback_mode=false" >> "${GITHUB_OUTPUT}"
+            echo "target_sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          fi
+
   publish:
     name: Publish master image
-    if: github.ref == 'refs/heads/master'
+    needs: validate_release
+    if: github.ref == 'refs/heads/master' && needs.validate_release.outputs.rollback_mode != 'true'
     runs-on: [self-hosted, Windows, X64]
     environment:
       name: dev
@@ -25,9 +73,11 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
       - run: docker push registry.example/project:${GITHUB_SHA}
+
   deploy:
     name: Deploy master image
-    needs: publish
+    needs: [validate_release, publish]
+    if: ${{ always() && github.ref == 'refs/heads/master' && needs.validate_release.result == 'success' && (needs.publish.result == 'success' || (needs.validate_release.outputs.rollback_mode == 'true' && needs.publish.result == 'skipped')) }}
     runs-on: [self-hosted, Linux, X64]
     environment:
       name: dev
@@ -35,9 +85,86 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - run: |
-          actual_image="$(docker inspect --format '{{.Config.Image}}' project)"
-          test "${actual_image}" = "registry.example/project:${GITHUB_SHA}"
-          docker exec project ./scripts/readiness-smoke.sh
-      - run: |
-          curl --header "Authorization: Basic ${{ secrets.PUSHGW_BASIC_AUTH }}" https://metrics.example
+      - name: 捕获当前运行镜像
+        id: capture_previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_image_ref="$(docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}")"
+          previous_image_id="$(docker inspect --format '{{.Image}}' "${CONTAINER_NAME}")"
+          [[ -n "${previous_image_ref}" && -n "${previous_image_id}" ]] || { echo "首次部署必须走显式例外流程" >&2; exit 1; }
+          expected_prefix="${IMAGE_NAME}:"
+          [[ "${previous_image_ref}" == "${expected_prefix}"* ]] || { echo "旧镜像不属于受管仓库" >&2; exit 1; }
+          previous_sha="${previous_image_ref#"${expected_prefix}"}"
+          [[ "${previous_sha}" =~ ^[0-9a-f]{40}$ ]] || { echo "旧镜像 tag 不是 40 位小写 SHA" >&2; exit 1; }
+          [[ "${previous_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "旧镜像内容 ID 无效" >&2; exit 1; }
+          echo "image_ref=${previous_image_ref}" >> "${GITHUB_OUTPUT}"
+          echo "image_id=${previous_image_id}" >> "${GITHUB_OUTPUT}"
+      - name: 执行向前兼容迁移
+        id: migrate
+        if: needs.validate_release.outputs.rollback_mode != 'true'
+        run: ./scripts/ci-migrate.sh
+      - name: 部署候选镜像
+        id: candidate_deploy
+        env:
+          DEPLOY_TARGET_SHA: ${{ needs.validate_release.outputs.target_sha }}
+        run: |
+          echo "entered=true" >> "${GITHUB_OUTPUT}"
+          ./scripts/ci-deploy.sh "${IMAGE_NAME}:${DEPLOY_TARGET_SHA}"
+      - name: 核对候选镜像并执行容器内 smoke
+        id: verify_candidate
+        shell: bash
+        env:
+          DEPLOY_TARGET_SHA: ${{ needs.validate_release.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          expected_image="${IMAGE_NAME}:${DEPLOY_TARGET_SHA}"
+          actual_image="$(docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}")"
+          actual_image_id="$(docker inspect --format '{{.Image}}' "${CONTAINER_NAME}")"
+          [[ "${actual_image}" == "${expected_image}" ]]
+          [[ -n "${actual_image_id}" ]]
+          docker exec "${CONTAINER_NAME}" ./scripts/ci-container-smoke.sh "${DEPLOY_TARGET_SHA}"
+      - name: 自动恢复原运行镜像
+        id: rollback_previous
+        if: ${{ failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true' }}
+        shell: bash
+        env:
+          PREVIOUS_IMAGE_REF: ${{ steps.capture_previous.outputs.image_ref }}
+          PREVIOUS_IMAGE_ID: ${{ steps.capture_previous.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          [[ -n "${PREVIOUS_IMAGE_REF}" && -n "${PREVIOUS_IMAGE_ID}" ]]
+          ./scripts/ci-rollback.sh "${PREVIOUS_IMAGE_REF}" "${PREVIOUS_IMAGE_ID}"
+          restored_image_ref="$(docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}")"
+          restored_image_id="$(docker inspect --format '{{.Image}}' "${CONTAINER_NAME}")"
+          [[ "${restored_image_ref}" == "${PREVIOUS_IMAGE_REF}" ]]
+          [[ "${restored_image_id}" == "${PREVIOUS_IMAGE_ID}" ]]
+          docker exec "${CONTAINER_NAME}" ./scripts/ci-container-smoke.sh "${PREVIOUS_IMAGE_ID}"
+      - name: 仅在验收成功后清理旧镜像
+        id: cleanup_images
+        if: ${{ success() }}
+        run: ./scripts/ci-cleanup-images.sh "${{ needs.validate_release.outputs.target_sha }}"
+      - name: 保留发布失败状态
+        id: preserve_failure
+        if: ${{ failure() }}
+        run: exit 1
+
+  finalize:
+    name: Finalize release
+    if: ${{ always() && github.ref == 'refs/heads/master' }}
+    needs: [validate_release, publish, deploy]
+    runs-on: [self-hosted, Linux, X64]
+    environment:
+      name: dev
+      deployment: false
+    env:
+      DEPLOY_TARGET_SHA: ${{ needs.validate_release.outputs.target_sha }}
+    steps:
+      - name: 记录实际发布目标和结果
+        id: finalize_release
+        continue-on-error: true
+        run: ./scripts/ci-release-finalize.sh "${DEPLOY_TARGET_SHA}"
+      - name: 保留发布失败状态
+        id: finalize_failure
+        if: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'
+        run: exit 1

@@ -1,0 +1,6 @@
+[
+  [
+    "  group: master-release\n",
+    "  group: master-release-${{ github.job }}\n"
+  ]
+]

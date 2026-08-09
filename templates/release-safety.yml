@@ -1,0 +1,38 @@
+version: "1"
+workflow: .github/workflows/release.yml
+contract_test:
+  # 固定入口必须保持 100755；入口内部再调用项目自己的语言/容器测试。
+  path: .github/scripts/release-safety-contract.sh
+  # 该 ID 绑定只执行上述入口且不带参数的 PR targeted step。
+  pr_step: release_safety_contract
+jobs:
+  prepare: validate_release
+  publish: publish
+  deploy: deploy
+  finalize: finalize
+steps:
+  target: release_target
+  target_job: prepare
+  capture: capture_previous
+  migrations: [migrate]
+  candidate: candidate_deploy
+  verify: [verify_candidate]
+  rollback: rollback_previous
+  cleanup: cleanup_images
+  failure: preserve_failure
+  finalize: finalize_release
+  finalize_failure: finalize_failure
+needs:
+  publish: [prepare]
+  deploy: [prepare, publish]
+  finalize: [prepare, publish, deploy]
+conditions:
+  prepare: github.ref == 'refs/heads/master'
+  publish: github.ref == 'refs/heads/master' && needs.validate_release.outputs.rollback_mode != 'true'
+  deploy: always() && github.ref == 'refs/heads/master' && needs.validate_release.result == 'success' && (needs.publish.result == 'success' || (needs.validate_release.outputs.rollback_mode == 'true' && needs.publish.result == 'skipped'))
+  migration: needs.validate_release.outputs.rollback_mode != 'true'
+  rollback: failure() && steps.capture_previous.outcome == 'success' && steps.candidate_deploy.outputs.entered == 'true'
+  cleanup: success()
+  failure: failure()
+  finalize: always() && github.ref == 'refs/heads/master'
+  finalize_failure: needs.validate_release.result != 'success' || needs.publish.result == 'failure' || needs.deploy.result != 'success'
