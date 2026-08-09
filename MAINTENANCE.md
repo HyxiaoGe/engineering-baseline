@@ -27,7 +27,7 @@
 4. 通过一次 master 发布证明 Environment-only secret、镜像身份和容器内 smoke。
 5. 将 `owner/repo` 追加到 `repositories.txt`。
 6. 将仓库名追加到中央 `.github/workflows/baseline-drift-audit.yml` 的 `repositories` 显式列表；测试会要求该列表与清单顺序一致。
-7. 把只读 GitHub App 的安装范围扩展到新仓库；纳管项目不得保存 App 私钥或个人访问令牌。
+7. 把只读 GitHub App `Engineering Baseline Auditor` 的安装范围扩展到新仓库；纳管项目不得保存 App 私钥或个人访问令牌。
 8. 运行 fixture 测试，并在基线仓库人工触发中央 live 审计；两者都成功后才算纳入基线。
 
 ## 修改公共规则
@@ -55,7 +55,7 @@
 1. 先让基线仓库的 `Baseline contract validation` 在真实 PR 通过。
 2. 合并后人工触发 `Engineering baseline drift audit`，保存四仓 live 结果。
 3. 只有四仓都输出 `PASS`，才更新版本说明并把该版本作为后续新项目入口。
-4. 中央审计的 GitHub App 只允许 `Administration: read`、`Actions: read`、`Contents: read`、`Environments: read`、`Secrets: read`，不订阅 webhook 事件且不授予写权限。
+4. 中央审计的 GitHub App `Engineering Baseline Auditor` 只允许 `Administration: read`、`Actions: read`、`Contents: read`、`Environments: read`、`Metadata: read`、`Secrets: read`，不订阅 webhook 事件且不授予写权限；其中 Metadata 是 GitHub 强制只读权限。
 5. App Client ID 使用 repository variable；私钥只存放在基线仓库的 `audit` Environment。禁止把 App 私钥下发到项目，也禁止保存个人访问令牌。
 
 ## 漂移处理

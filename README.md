@@ -1,6 +1,6 @@
 # GitHub 工程基线
 
-这是 [HyxiaoGe/engineering-baseline](https://github.com/HyxiaoGe/engineering-baseline) 私有仓库维护的一套可复用 GitHub Actions 与仓库治理基线。它统一跨项目的安全边界和验收证据，不统一项目内部的构建方式。
+这是 [HyxiaoGe/engineering-baseline](https://github.com/HyxiaoGe/engineering-baseline) 公开仓库维护的一套可复用 GitHub Actions 与仓库治理基线。它统一跨项目的安全边界和验收证据，不统一项目内部的构建方式。
 
 基线仓库自身不会自动修改纳管项目。`scripts/audit-github-baseline.sh` 只通过 GitHub GET API 读取仓库配置、工作流内容以及 secret **名称**，不会读取或输出 secret 值。
 
@@ -58,12 +58,13 @@ bash tests/test-audit.sh
 
 自动审计只在基线仓库的 `.github/workflows/baseline-drift-audit.yml` 中运行。纳管项目不复制 workflow，也不保存审计凭据。中央任务通过 `actions/create-github-app-token` 创建短期 GitHub App installation token，并在 Action 输入中把 token 精确限制到 `repositories.txt` 对应的四个仓库。
 
-GitHub App 不订阅 webhook 事件，不授予写权限，只配置以下 repository permissions：
+GitHub App 名为 `Engineering Baseline Auditor`，只允许安装到 `@HyxiaoGe`。它不订阅 webhook 事件，不授予写权限，只配置以下 repository permissions：
 
 - `Administration: read`：读取 `master` branch protection。
 - `Actions: read`：列举 active workflows。
 - `Contents: read`：读取默认分支 workflow 与本地 Action 内容。
 - `Environments: read`：读取 Environment 和 Environment secret 名称元数据。
+- `Metadata: read`：GitHub App installation token 强制携带的仓库元数据只读权限。
 - `Secrets: read`：读取 repository secret 名称元数据。
 
 基线仓库使用 repository variable `BASELINE_AUDIT_APP_CLIENT_ID` 保存 Client ID，并把私钥作为 `BASELINE_AUDIT_APP_PRIVATE_KEY` 存入 `audit` Environment；workflow 自身只声明 `contents: read`，创建短期令牌时再次显式要求上述五项 `read`。审计器只处理 secret 名称，GitHub API 和脚本都不会读取 secret 值。

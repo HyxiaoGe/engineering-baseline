@@ -308,10 +308,12 @@ assert "github.token" not in workflow_text
 assert "secrets: inherit" not in workflow_text
 for marker in (
     "GitHub App",
+    "Engineering Baseline Auditor",
     "Administration: read",
     "Actions: read",
     "Contents: read",
     "Environments: read",
+    "Metadata: read",
     "Secrets: read",
     "audit` Environment",
 ):
@@ -325,6 +327,9 @@ for forbidden in (
 ):
     assert forbidden not in readme, forbidden
     assert forbidden not in maintenance, forbidden
+
+assert "公开仓库维护" in readme
+assert "私有仓库维护" not in readme
 
 print("中央 GitHub App 漂移审计入口契约通过")
 PY
