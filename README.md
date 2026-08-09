@@ -27,6 +27,12 @@
 
 根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应优先检查哪些项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。v1 保持观察模式，不增加 required check，不改变现有 branch protection；官方设置通过真实 PR 验收，中央审计只验证仓库内可稳定读取的规则文件。完整边界见 [官方治理契约](contracts/codex-code-review.md)。
 
+## Auto-merge 与分支清理
+
+五仓只使用 GitHub 原生 Auto-merge：仓库允许该能力并不代表任何 PR 会自动开启。只有官方 Review 当前 HEAD、全部 review thread 已解决、依赖与发布风险已分类后，才对单个 PR 开启 Auto-merge；required checks 和 `master` 分支保护继续决定最终何时合并。
+
+PR 出现新提交后必须重新 Review，不能沿用旧 HEAD 的审查证据。Dependabot PR 不会自动开启 Auto-merge；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。合并完成后由 GitHub 自动删除远端功能分支；本地 worktree 和分支只在确认已合并、工作区干净且没有独有提交后清理。
+
 ## 只读审计
 
 前置条件：已安装并登录 `gh`，安装 `Python 3`、`PyYAML>=6`、`markdown-it-py==3.0.0` 与 `mdurl==0.1.2`，当前身份对目标仓库至少具有读取 Actions、Environment、branch protection 和 secret 名称元数据的权限。
@@ -64,6 +70,7 @@
 - publish/deploy/finalize 的 master 边界、normal/rollback 分支、migration 跳过回滚和 rollback 允许式不能只靠 manifest 自我声明，中央会独立验证公共语义；
 - release 内未声明的特权 job、job 级写权限、动态分域 concurrency 和未锁定 digest 的 `docker://` Action；
 - `master` branch protection 和 required check。
+- 仓库允许原生 Auto-merge，且合并后自动删除远端功能分支；单个 PR 的 Review/thread/开启顺序仍由真实 PR 验收。
 
 中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置和模型审查质量；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR Review 负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
 

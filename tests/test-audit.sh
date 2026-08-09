@@ -196,6 +196,22 @@ for document in (review_contract, readme, maintenance):
         "不自建",
     ):
         assert marker in document, (marker, document[:40])
+for document in (root_agents, template, review_contract, readme, maintenance):
+    for marker in (
+        "Review 当前 HEAD",
+        "全部 review thread 已解决",
+        "单个 PR",
+        "Auto-merge",
+    ):
+        assert marker in document, (marker, document[:40])
+for document in (review_contract, readme, maintenance):
+    for marker in (
+        "新提交",
+        "重新 Review",
+        "不会自动开启",
+        "Dependabot",
+    ):
+        assert marker in document, (marker, document[:40])
 for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
     assert marker in audit_entrypoint, marker
 assert 'MarkdownIt("commonmark")' in audit_source
@@ -489,6 +505,8 @@ PY
 }
 
 run_expect_success good
+run_expect_failure repository-auto-merge-disabled "[REPOSITORY_MERGE_POLICY]"
+run_expect_failure repository-branch-auto-delete-disabled "[REPOSITORY_MERGE_POLICY]"
 run_expect_failure code-review-rules-missing "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-symlink "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-heading-missing "[CODE_REVIEW_RULES]"

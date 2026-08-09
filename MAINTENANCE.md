@@ -24,13 +24,14 @@
 
 1. 在独立 worktree 中复制 `templates/AGENTS.md`，替换占位符并补齐项目内部规则；项目规则不得降低公共 MUST，根文件必须保留精确 `## Code Review Rules` 标题。
 2. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`，并用真实 PR 验证自动审查；未触发或需要重审时使用 `@codex review`。
-3. 复制并按项目实际情况改造 `templates/` 下的 PR、release workflow、`release-safety.yml` 与 `release-safety-contract.sh`；把后两者分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 的 Git mode 为 `100755`，并映射项目真实 job/step 拓扑。
-4. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
-5. 通过一次 master 发布证明 Environment-only secret、旧运行态捕获、候选镜像身份、容器内 smoke、成功后清理和 `DEPLOY_TARGET_SHA` 发布证据。
-6. 将 `owner/repo` 追加到 `repositories.txt`。
-7. 将仓库名追加到中央 `.github/workflows/baseline-drift-audit.yml` 的 `repositories` 显式列表；测试会要求该列表与清单顺序一致。
-8. 把只读 GitHub App `Engineering Baseline Auditor` 的安装范围扩展到新仓库；纳管项目不得保存 App 私钥或个人访问令牌。
-9. 运行 fixture 测试，并在基线仓库人工触发中央 live 审计；两者都成功后才算纳入基线。
+3. 启用 GitHub 原生 Auto-merge 与合并后自动删除远端功能分支；这两个仓库设置不会自动开启任何单个 PR。
+4. 复制并按项目实际情况改造 `templates/` 下的 PR、release workflow、`release-safety.yml` 与 `release-safety-contract.sh`；把后两者分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 的 Git mode 为 `100755`，并映射项目真实 job/step 拓扑。
+5. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
+6. 通过一次 master 发布证明 Environment-only secret、旧运行态捕获、候选镜像身份、容器内 smoke、成功后清理和 `DEPLOY_TARGET_SHA` 发布证据。
+7. 将 `owner/repo` 追加到 `repositories.txt`。
+8. 将仓库名追加到中央 `.github/workflows/baseline-drift-audit.yml` 的 `repositories` 显式列表；测试会要求该列表与清单顺序一致。
+9. 把只读 GitHub App `Engineering Baseline Auditor` 的安装范围扩展到新仓库；纳管项目不得保存 App 私钥或个人访问令牌。
+10. 运行 fixture 测试，并在基线仓库人工触发中央 live 审计；两者都成功后才算纳入基线。
 
 固定 wrapper 内部可以复用既有语言或容器测试；`PR container validation` job 名称必须全局唯一、无 `if`、无 `needs`、无有效 `continue-on-error`，workflow/job 不得覆盖默认 `shell` 或 `working-directory`。manifest 映射的主 PR targeted step 必须以单行 `run` 精确等于 wrapper 路径，不能附加参数、前后命令、`;`、管道或 `||`，也不能声明 `if`、`continue-on-error`、`shell`、`working-directory`，或把 ID 挂到 checkout、`echo`、`test -f` 与不相关的完整构建步骤。
 
@@ -57,6 +58,14 @@ prepare 存在时，publish、migration 与 deploy 必须使用 `needs.<prepare>
 - v1 保持观察模式，不把官方 Review 增加为 required check，不修改现有 branch protection，也不要求官方输出自定义批准口令或严重级别。
 - 官方设置和审查行为通过真实 PR 验收；中央审计只检查根 `AGENTS.md` 是普通文件，且固定 `markdown-it-py==3.0.0` CommonMark parser 产生源码行精确等于 `## Code Review Rules` 的真实 h2。不得恢复手写 Markdown 状态机，也不抓取页面或调用私有接口。
 - 官方功能演进时先更新接入说明和精简规则；若官方补齐缺口，优先删除临时流程，不维护平行实现。
+
+## Auto-merge 维护
+
+- 仓库级只启用 GitHub 原生能力，不建立自动开启 PR 的 Bot、Action 或定时任务；启用能力不会自动开启任何单个 PR。
+- 仅在官方 Review 当前 HEAD、全部 review thread 已解决、变更风险已完成分类后，对单个 PR 开启 Auto-merge；required checks 继续由 GitHub 原生门禁执行。
+- 新提交会使旧 HEAD 的审查证据失效，必须重新 Review、重新核对 thread，再重新开启 Auto-merge。
+- Dependabot PR 不能只凭 CI 绿灯自动合并；运行时依赖、跨大版本和会触发生产发布的仓库必须另做兼容性与发布授权判断。
+- 合并后远端功能分支由 GitHub 自动删除。本地 worktree/分支只在已合并、干净、没有独有提交且相关发布验收完成后删除。
 
 ## Action 升级
 
