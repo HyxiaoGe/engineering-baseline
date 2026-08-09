@@ -178,6 +178,8 @@ for marker in (
     "子目录 `AGENTS.md`",
     "独立 Git worktree",
     "Co-Authored-By: Codex <noreply@anthropic.com>",
+    "allow_auto_merge=false",
+    "delete_branch_on_merge=true",
 ):
     assert marker in template, marker
 

@@ -42,6 +42,7 @@
 - 发布、手动部署、self-hosted、`dev` Environment 和发布 secret 能力只存在于唯一受控 release workflow；按真实拓扑维护 `.github/release-safety.yml`，不要把模板 job/step ID 当成公共事实。
 - 项目可执行契约测试负责证明 ref/内容 ID、容器内 smoke、回滚命令和实际目标 SHA；固定 `100755` wrapper 内部调用项目测试，`PR container validation` job 名称必须唯一、无依赖且无条件执行，workflow/job/targeted step 不得自定义 shell 或工作目录，targeted step 只以精确单行 `run` 执行 manifest 声明路径。中央审计只验证 manifest 与结构化 YAML 高层约束，不解释任意 shell 控制流。
 - `master` 要求 GitHub Actions 产生的 `PR container validation`，启用 strict、管理员保护和对话解决，禁止 force push 与删除。
+- 官方 Review 尚非当前 HEAD 的 required check 时，仓库保持 `allow_auto_merge=false`、`delete_branch_on_merge=true`；只在 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功后人工合并。
 
 ## 项目命令
 
