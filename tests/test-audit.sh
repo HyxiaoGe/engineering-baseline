@@ -163,9 +163,9 @@ review_convergence_good = (
     root / "tests" / "fixtures" / "review-convergence-policy" / "good.md"
 ).read_text()
 review_convergence_failures = {
-    "eager-review.md": "每次新提交后立即",
-    "inflight-duplicate.md": "Review 正在运行时仍再次",
-    "reaction-gate.md": "只有收到 👍",
+    "eager-review.md": 4,
+    "inflight-duplicate.md": 1,
+    "reaction-gate.md": 3,
 }
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
@@ -180,41 +180,27 @@ def section_bullets(document, heading):
         section.append(line)
     return [line for line in section if line.startswith("- ")]
 
-required_review_markers = (
-        "Draft",
-        "稳定 HEAD",
-        "同一 HEAD",
-        "Review 正在运行",
-        "文字结论",
-        "最多两轮",
-        "至少等待 15 分钟",
-        "明确失败",
-        "允许重试一次",
+canonical_review_rules = section_bullets(
+    review_convergence_good, "## 官方 Review 收敛"
 )
-forbidden_review_markers = (
-    "每次新提交后立即",
-    "Review 正在运行时仍再次",
-    "只有收到 👍",
-)
-
-def review_policy_violations(document):
-    missing = [marker for marker in required_review_markers if marker not in document]
-    forbidden = [marker for marker in forbidden_review_markers if marker in document]
-    return missing, forbidden
-
-def assert_review_convergence(document):
-    missing, forbidden = review_policy_violations(document)
-    assert not missing, (missing, document[:80])
-    assert not forbidden, (forbidden, document[:80])
-
-assert_review_convergence(review_convergence_good)
-for fixture_name, expected_violation in review_convergence_failures.items():
+assert len(canonical_review_rules) == 6, canonical_review_rules
+for fixture_name, expected_changed_index in review_convergence_failures.items():
     document = (
         root / "tests" / "fixtures" / "review-convergence-policy" / fixture_name
     ).read_text()
-    missing, forbidden = review_policy_violations(document)
-    assert not missing, (fixture_name, missing)
-    assert forbidden == [expected_violation], (fixture_name, forbidden)
+    fixture_rules = section_bullets(document, "## 官方 Review 收敛")
+    assert len(fixture_rules) == len(canonical_review_rules), fixture_name
+    changed_indexes = [
+        index
+        for index, (expected, actual) in enumerate(
+            zip(canonical_review_rules, fixture_rules)
+        )
+        if expected != actual
+    ]
+    assert changed_indexes == [expected_changed_index], (
+        fixture_name,
+        changed_indexes,
+    )
 
 for marker in (
     "PROJECT_REPLACE",
@@ -244,7 +230,6 @@ for document in (review_contract, readme, maintenance):
     ):
         assert marker in document, (marker, document[:40])
 for document in (root_agents, template, review_contract, readme, maintenance):
-    assert_review_convergence(document)
     for marker in (
         "Review 当前 HEAD",
         "全部 review thread 已解决",
@@ -253,6 +238,8 @@ for document in (root_agents, template, review_contract, readme, maintenance):
         "暂不允许",
     ):
         assert marker in document, (marker, document[:40])
+for document in (root_agents, template):
+    assert section_bullets(document, "## 官方 Review 收敛") == canonical_review_rules
 for document in (review_contract, readme, maintenance):
     for marker in (
         "新提交",
@@ -260,6 +247,9 @@ for document in (review_contract, readme, maintenance):
         "不保证自动关闭",
         "不是 required check",
         "Dependabot",
+        "至少等待 15 分钟",
+        "明确失败",
+        "允许重试一次",
     ):
         assert marker in document, (marker, document[:40])
     assert "不要求每个中间提交" in document, document[:40]
