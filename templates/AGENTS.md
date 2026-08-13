@@ -29,6 +29,14 @@
 - 检查数据/API 与跨仓协议兼容、CI/CD 权限边界、失败/回滚路径及测试能否证明这些高风险行为。
 - 把 PR 说明和已有测试视为待验证声明，不重复 lint、格式化或纯风格意见，不要求与当前风险无关的工作；官方 Review 当前不是 required check，且 GitHub 对有写权限者推送新提交不保证自动关闭 Auto-merge；v1 暂不允许对单个 PR 开启 Auto-merge，只在 Review 当前 HEAD、全部 review thread 已解决后人工合并；项目重点：PROJECT_REPLACE_REVIEW_RULES
 
+## 官方 Review 收敛
+
+- PR 在 Draft 阶段完成实现、测试、内部交叉审查和范围冻结后，再让 Automatic reviews 审查稳定 HEAD；官方 Review 不作为逐提交调试器。
+- 一轮 findings 全部返回后按根因批量修复；同一 HEAD 最多人工请求一次，Review 正在运行时不得再次评论 `@codex review`。
+- 正常最多两轮完整官方 Review；第三轮必须显式判断拆分、收窄范围或有依据地接受非阻塞项。
+- 当前 HEAD 获得未发现重大问题的明确文字结论即视为通过，不追求 emoji、reaction、固定批准口令或重复确认。
+- 新提交会让旧 Review 失去最终 HEAD 证据资格，但不要求每个中间提交立即重审；全部修复完成并恢复稳定 HEAD 后只触发一次最终复审。
+
 ## CI/CD 公共门禁
 
 - PR 只使用 GitHub 托管 runner，权限为 `contents: read`，不得读取发布 secret、绑定发布 Environment、推送镜像或部署。

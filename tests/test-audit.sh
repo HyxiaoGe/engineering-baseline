@@ -159,6 +159,12 @@ contract = (root / "contracts" / "ci-cd-baseline.md").read_text()
 review_contract = (root / "contracts" / "codex-code-review.md").read_text()
 readme = (root / "README.md").read_text()
 maintenance = (root / "MAINTENANCE.md").read_text()
+review_convergence_good = (
+    root / "tests" / "fixtures" / "review-convergence-policy" / "good.md"
+).read_text()
+review_convergence_legacy = (
+    root / "tests" / "fixtures" / "review-convergence-policy" / "legacy.md"
+).read_text()
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
 
@@ -171,6 +177,31 @@ def section_bullets(document, heading):
             break
         section.append(line)
     return [line for line in section if line.startswith("- ")]
+
+def assert_review_convergence(document):
+    for marker in (
+        "Draft",
+        "稳定 HEAD",
+        "同一 HEAD",
+        "Review 正在运行",
+        "文字结论",
+        "最多两轮",
+    ):
+        assert marker in document, (marker, document[:80])
+    for forbidden in (
+        "每次新提交后立即",
+        "只有收到 👍",
+        "新提交必须重新 Review",
+    ):
+        assert forbidden not in document, (forbidden, document[:80])
+
+assert_review_convergence(review_convergence_good)
+try:
+    assert_review_convergence(review_convergence_legacy)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("旧的逐提交重复 Review 策略不应满足收敛契约")
 
 for marker in (
     "PROJECT_REPLACE",
@@ -200,6 +231,7 @@ for document in (review_contract, readme, maintenance):
     ):
         assert marker in document, (marker, document[:40])
 for document in (root_agents, template, review_contract, readme, maintenance):
+    assert_review_convergence(document)
     for marker in (
         "Review 当前 HEAD",
         "全部 review thread 已解决",
@@ -217,6 +249,7 @@ for document in (review_contract, readme, maintenance):
         "Dependabot",
     ):
         assert marker in document, (marker, document[:40])
+    assert "不要求每个中间提交" in document, document[:40]
 for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
     assert marker in audit_entrypoint, marker
 assert 'MarkdownIt("commonmark")' in audit_source

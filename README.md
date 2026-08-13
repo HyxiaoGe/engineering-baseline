@@ -24,15 +24,19 @@
 
 ## 官方 Codex Code Review
 
-基线只接入和治理官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或评论协议。自动唤醒使用官方 `Automatic reviews`；没有自动触发或需要重审时，在 PR 评论使用 `@codex review`。
+基线只接入和治理官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或评论协议。自动唤醒使用官方 `Automatic reviews`；没有自动触发，或批量修复后需要对稳定 HEAD 做最终复审时，才在 PR 评论使用 `@codex review`。
 
 根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应优先检查哪些项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。v1 保持观察模式，不增加 required check，不改变现有 branch protection；官方设置通过真实 PR 验收，中央审计只验证仓库内可稳定读取的规则文件。完整边界见 [官方治理契约](contracts/codex-code-review.md)。
+
+采用收敛式 Review：非平凡 PR 在 Draft 阶段完成实现、测试、内部交叉审查与范围冻结，再让官方 Review 检查稳定 HEAD。一轮 findings 完整返回后按根因批量修复；同一 HEAD 最多人工请求一次，Review 正在运行时不得排队新的请求。普通 PR 最多两轮完整 Review，即初审和最终复审；第三轮必须先由维护者判断拆分、收窄范围或接受有依据的非阻塞项。
+
+官方 Reviewer 对当前 HEAD 给出未发现重大问题的明确文字结论即视为通过，不追求 emoji、reaction 或固定批准口令。新提交会使旧 Review 失去最终 HEAD 证据资格，但不要求每个中间提交立即重审；完成一批修改并恢复稳定 HEAD 后只触发一次最终复审。包含多个独立架构边界的大型需求应拆成阶段 PR，跨仓变更先冻结共享协议，只有最终集成 PR 使用 `Closes #xx`。
 
 ## Auto-merge 与分支清理
 
 GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权限者推送后不保证自动关闭。由于官方 Review 当前不是 required check，纳管产品仓库在 v1 暂不允许开启 Auto-merge，也不为单个 PR 启用它。
 
-人工合并前必须确认官方 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功；新提交必须重新 Review。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。
+人工合并前必须确认官方 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功；最终 Review 后出现新提交时，完成修改并恢复稳定 HEAD 后再做一次最终复审，不逐个审查中间提交。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。
 
 分支自动删除不是公共强制项。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用 GitHub 的合并后自动删除；存在未保护且需要复用的 `dev`、`release` 等长期 head 分支时必须关闭。本地 worktree 和分支始终只在确认已合并、工作区干净且没有独有提交后清理。
 
@@ -75,7 +79,7 @@ GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权�
 - `master` branch protection 和 required check。
 - 纳管产品仓库关闭 Auto-merge；分支自动删除按项目真实分支模型配置，不由公共审计强制。人工合并前的 Review/thread/风险分类仍由真实 PR 验收。
 
-中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置和模型审查质量；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR Review 负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
+中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置、模型审查质量、同一 HEAD 请求次数、在途 Review 或审查轮次预算；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR 时间线负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
 
 本地 fixture 自测：
 

@@ -23,7 +23,7 @@
 ## 新项目接入
 
 1. 在独立 worktree 中复制 `templates/AGENTS.md`，替换占位符并补齐项目内部规则；项目规则不得降低公共 MUST，根文件必须保留精确 `## Code Review Rules` 标题。
-2. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`，并用真实 PR 验证自动审查；未触发或需要重审时使用 `@codex review`。
+2. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`，并用真实 PR 验证自动审查；未触发，或批量修复后需要对稳定 HEAD 做最终复审时才使用 `@codex review`。
 3. 保持 Auto-merge 关闭；官方 Review 尚非 required check 时不得为单个 PR 开启 Auto-merge。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用合并后自动删除远端分支。
 4. 复制并按项目实际情况改造 `templates/` 下的 PR、release workflow、`release-safety.yml` 与 `release-safety-contract.sh`；把后两者分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 的 Git mode 为 `100755`，并映射项目真实 job/step 拓扑。
 5. 通过真实 PR 证明 `PR container validation` 成功，随后原子迁移 master required check。
@@ -54,16 +54,20 @@ prepare 存在时，publish、migration 与 deploy 必须使用 `needs.<prepare>
 ## 官方 Codex Code Review 维护
 
 - 只采用官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或平行评论协议。
-- 自动触发依赖官方 `Automatic reviews`；`AGENTS.md` 只定义审查规则，不能代替设置。自动审查未出现或需要重审时使用 `@codex review`。
+- 自动触发依赖官方 `Automatic reviews`；`AGENTS.md` 只定义审查规则，不能代替设置。自动审查未出现，或批量修复后需要对稳定 HEAD 做最终复审时才使用 `@codex review`。
+- 非平凡 PR 先保持 Draft，完成实现、测试、内部交叉审查和范围冻结后再进入官方 Review；多个独立架构边界必须拆分，跨仓变更先冻结共享协议，最终集成 PR 才使用 `Closes #xx`。
+- 等一轮 findings 完整返回后按根因批量修复。同一 HEAD 最多人工请求一次，Review 正在运行或尚未返回时不得再次触发；不得一条 finding 对应一次 push 和一次完整 Review。
+- 普通 PR 最多两轮完整官方 Review；第三轮必须显式记录原因，并先判断拆分、收窄范围或接受有依据的非阻塞项。当前 HEAD 获得未发现重大问题的明确文字结论即视为通过，不追求 emoji、reaction 或固定口令。
+- 新提交会使旧 Review 失去最终 HEAD 证据资格，但不要求每个中间提交立即重审；全部修改完成并恢复稳定 HEAD 后只请求一次最终复审。
 - v1 保持观察模式，不把官方 Review 增加为 required check，不修改现有 branch protection，也不要求官方输出自定义批准口令或严重级别。
-- 官方设置和审查行为通过真实 PR 验收；中央审计只检查根 `AGENTS.md` 是普通文件，且固定 `markdown-it-py==3.0.0` CommonMark parser 产生源码行精确等于 `## Code Review Rules` 的真实 h2。不得恢复手写 Markdown 状态机，也不抓取页面或调用私有接口。
+- 官方设置和审查行为通过真实 PR 验收；中央审计只检查根 `AGENTS.md` 是普通文件，且固定 `markdown-it-py==3.0.0` CommonMark parser 产生源码行精确等于 `## Code Review Rules` 的真实 h2。不得恢复手写 Markdown 状态机，也不抓取页面、调用私有接口或伪称验证同一 HEAD 请求次数、在途 Review 和审查预算。
 - 官方功能演进时先更新接入说明和精简规则；若官方补齐缺口，优先删除临时流程，不维护平行实现。
 
 ## Auto-merge 维护
 
 - GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权限者推送后不保证自动关闭。官方 Review 当前不是 required check，因此 v1 暂不允许仓库或单个 PR 开启 Auto-merge。
 - 不建立 HEAD 监听器、自动合并 Bot、Action 或定时任务来补这个能力缺口；未来等官方 Review 可成为当前 HEAD required gate，或 GitHub 保证任意新提交都会撤销 Auto-merge 后再评估。
-- 人工合并前确认官方 Review 当前 HEAD、全部 review thread 已解决、required checks 成功且风险已分类；新提交必须重新 Review。
+- 人工合并前确认官方 Review 当前 HEAD、全部 review thread 已解决、required checks 成功且风险已分类；最终 Review 后出现新提交时，先完成全部修改并恢复稳定 HEAD，再按收敛预算完成最终复审。
 - Dependabot PR 不能只凭 CI 绿灯自动合并；运行时依赖、跨大版本和会触发生产发布的仓库必须另做兼容性与发布授权判断。
 - 分支自动删除不是公共强制项。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用 GitHub 的合并后自动删除；存在未保护且需要复用的长期 head 分支时必须关闭。
 - 本地 worktree/分支只在已合并、干净、没有独有提交且相关发布验收完成后删除。
