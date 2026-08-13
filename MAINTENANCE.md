@@ -56,9 +56,10 @@ prepare 存在时，publish、migration 与 deploy 必须使用 `needs.<prepare>
 - 只采用官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或平行评论协议。
 - 自动触发依赖官方 `Automatic reviews`；`AGENTS.md` 只定义审查规则，不能代替设置。自动审查未出现，或批量修复后需要对稳定 HEAD 做最终复审时才使用 `@codex review`。
 - 非平凡 PR 先保持 Draft，完成实现、测试、内部交叉审查和范围冻结后再进入官方 Review；多个独立架构边界必须拆分，跨仓变更先冻结共享协议，最终集成 PR 才使用 `Closes #xx`。
-- 等一轮 findings 完整返回后按根因批量修复。同一 HEAD 最多人工请求一次，Review 正在运行或尚未返回时不得再次触发；不得一条 finding 对应一次 push 和一次完整 Review。
+- 等一轮 findings 完整返回后按根因批量修复。同一 HEAD 不得并发或对有效结果重复请求，Review 正在运行或尚未返回时不得再次触发；不得一条 finding 对应一次 push 和一次完整 Review。
 - 普通 PR 最多两轮完整官方 Review；第三轮必须显式记录原因，并先判断拆分、收窄范围或接受有依据的非阻塞项。当前 HEAD 获得未发现重大问题的明确文字结论即视为通过，不追求 emoji、reaction 或固定口令。
 - 新提交会使旧 Review 失去最终 HEAD 证据资格，但不要求每个中间提交立即重审；全部修改完成并恢复稳定 HEAD 后只请求一次最终复审。
+- PR 转为 Ready 后，Automatic Review 未出现且没有明确失败时至少等待 15 分钟，并在人工评论前立即复查时间线。请求明确失败或预定超时且没有结果、没有在途信号时允许重试一次并记录原因；重试仍失败则停止并排查官方集成，不制造空提交改变 HEAD。
 - v1 保持观察模式，不把官方 Review 增加为 required check，不修改现有 branch protection，也不要求官方输出自定义批准口令或严重级别。
 - 官方设置和审查行为通过真实 PR 验收；中央审计只检查根 `AGENTS.md` 是普通文件，且固定 `markdown-it-py==3.0.0` CommonMark parser 产生源码行精确等于 `## Code Review Rules` 的真实 h2。不得恢复手写 Markdown 状态机，也不抓取页面、调用私有接口或伪称验证同一 HEAD 请求次数、在途 Review 和审查预算。
 - 官方功能演进时先更新接入说明和精简规则；若官方补齐缺口，优先删除临时流程，不维护平行实现。

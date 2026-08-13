@@ -28,9 +28,11 @@
 
 根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应优先检查哪些项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。v1 保持观察模式，不增加 required check，不改变现有 branch protection；官方设置通过真实 PR 验收，中央审计只验证仓库内可稳定读取的规则文件。完整边界见 [官方治理契约](contracts/codex-code-review.md)。
 
-采用收敛式 Review：非平凡 PR 在 Draft 阶段完成实现、测试、内部交叉审查与范围冻结，再让官方 Review 检查稳定 HEAD。一轮 findings 完整返回后按根因批量修复；同一 HEAD 最多人工请求一次，Review 正在运行时不得排队新的请求。普通 PR 最多两轮完整 Review，即初审和最终复审；第三轮必须先由维护者判断拆分、收窄范围或接受有依据的非阻塞项。
+采用收敛式 Review：非平凡 PR 在 Draft 阶段完成实现、测试、内部交叉审查与范围冻结，再让官方 Review 检查稳定 HEAD。一轮 findings 完整返回后按根因批量修复；同一 HEAD 不允许并发或对有效结果重复请求，Review 正在运行时不得排队新的请求。普通 PR 最多两轮完整 Review，即初审和最终复审；第三轮必须先由维护者判断拆分、收窄范围或接受有依据的非阻塞项。
 
 官方 Reviewer 对当前 HEAD 给出未发现重大问题的明确文字结论即视为通过，不追求 emoji、reaction 或固定批准口令。新提交会使旧 Review 失去最终 HEAD 证据资格，但不要求每个中间提交立即重审；完成一批修改并恢复稳定 HEAD 后只触发一次最终复审。包含多个独立架构边界的大型需求应拆成阶段 PR，跨仓变更先冻结共享协议，只有最终集成 PR 使用 `Closes #xx`。
+
+PR 转为 Ready 后若 Automatic Review 尚未出现，在没有明确失败时至少等待 15 分钟，并在人工评论前立即复查时间线。请求明确失败，或超过预定超时且没有结果、没有在途信号时允许重试一次并记录原因；重试仍失败就停止 Review 循环并排查官方集成，不通过空提交制造新 HEAD。
 
 ## Auto-merge 与分支清理
 

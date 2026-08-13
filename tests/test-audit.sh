@@ -162,9 +162,11 @@ maintenance = (root / "MAINTENANCE.md").read_text()
 review_convergence_good = (
     root / "tests" / "fixtures" / "review-convergence-policy" / "good.md"
 ).read_text()
-review_convergence_legacy = (
-    root / "tests" / "fixtures" / "review-convergence-policy" / "legacy.md"
-).read_text()
+review_convergence_failures = {
+    "eager-review.md": "每次新提交后立即",
+    "inflight-duplicate.md": "Review 正在运行时仍再次",
+    "reaction-gate.md": "只有收到 👍",
+}
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
 
@@ -178,30 +180,41 @@ def section_bullets(document, heading):
         section.append(line)
     return [line for line in section if line.startswith("- ")]
 
-def assert_review_convergence(document):
-    for marker in (
+required_review_markers = (
         "Draft",
         "稳定 HEAD",
         "同一 HEAD",
         "Review 正在运行",
         "文字结论",
         "最多两轮",
-    ):
-        assert marker in document, (marker, document[:80])
-    for forbidden in (
-        "每次新提交后立即",
-        "只有收到 👍",
-        "新提交必须重新 Review",
-    ):
-        assert forbidden not in document, (forbidden, document[:80])
+        "至少等待 15 分钟",
+        "明确失败",
+        "允许重试一次",
+)
+forbidden_review_markers = (
+    "每次新提交后立即",
+    "Review 正在运行时仍再次",
+    "只有收到 👍",
+)
+
+def review_policy_violations(document):
+    missing = [marker for marker in required_review_markers if marker not in document]
+    forbidden = [marker for marker in forbidden_review_markers if marker in document]
+    return missing, forbidden
+
+def assert_review_convergence(document):
+    missing, forbidden = review_policy_violations(document)
+    assert not missing, (missing, document[:80])
+    assert not forbidden, (forbidden, document[:80])
 
 assert_review_convergence(review_convergence_good)
-try:
-    assert_review_convergence(review_convergence_legacy)
-except AssertionError:
-    pass
-else:
-    raise AssertionError("旧的逐提交重复 Review 策略不应满足收敛契约")
+for fixture_name, expected_violation in review_convergence_failures.items():
+    document = (
+        root / "tests" / "fixtures" / "review-convergence-policy" / fixture_name
+    ).read_text()
+    missing, forbidden = review_policy_violations(document)
+    assert not missing, (fixture_name, missing)
+    assert forbidden == [expected_violation], (fixture_name, forbidden)
 
 for marker in (
     "PROJECT_REPLACE",

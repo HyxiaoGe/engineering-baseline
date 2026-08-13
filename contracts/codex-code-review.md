@@ -11,8 +11,9 @@
 ## 2. 触发与规则分离
 
 - MUST：在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`，由官方集成自动触发新 PR 审查。
-- MUST：自动审查未触发，或一批修复完成后需要对稳定 HEAD 做最终复审时，才使用官方评论命令 `@codex review` 作为人工兜底；Review 正在运行时不得再次触发。
-- MUST：同一 HEAD 最多人工请求一次 Review；不得为了 emoji、reaction、批准口令或重复确认，向已经获得明确文字结论的 HEAD 再次请求。
+- MUST：把 PR 标记为 Ready 后先等待 Automatic Review；没有明确失败时至少等待 15 分钟，并在发送评论前立即复查 PR 时间线，仍无 Review 结果或在途信号时，才使用官方评论命令 `@codex review` 作为人工兜底。
+- MUST：同一 HEAD 不得同时存在多个请求，也不得向已经获得有效结果的 HEAD 重复请求；Review 正在运行时不得再次触发。请求明确失败，或超过至少 15 分钟的预定超时且仍没有结果或在途信号时，允许重试一次并记录原因；重试仍失败则停止审查循环并排查集成，不得制造空提交改变 HEAD。
+- MUST：不得为了 emoji、reaction、批准口令或重复确认，向已经获得明确文字结论的 HEAD 再次请求。
 - MUST：每个仓库根目录维护普通文件 `AGENTS.md`，并包含独占一行的精确标题 `## Code Review Rules`。
 - MUST：`AGENTS.md` 只声明官方 Reviewer 的审查重点，不能被描述为 Automatic reviews 的开启方式或触发证据。
 - 项目扩展点：项目可以在根规则或更近目录的 `AGENTS.md` 中补充架构、协议、数据和真实验收约束，但不得降低根级公共审查原则。
@@ -46,7 +47,7 @@
 
 ### 4.3 Single-flight、预算与停止条件
 
-- MUST：同一 HEAD 只能有一个人工 Review 请求；Review 正在运行或结果尚未返回时不得排队新的请求。运行期间出现新提交时，先等待当前结果、完成剩余批量修复，再对最终稳定 HEAD 请求一次复审。
+- MUST：同一 HEAD 同一时刻只能有一个 Review 请求；Review 正在运行或结果尚未返回时不得排队新的请求。运行期间出现新提交时，先等待当前结果、完成剩余批量修复，再对最终稳定 HEAD 请求一次复审；明确失败或预定超时且没有任何结果的尝试不计为完整 Review 轮次，并按前述边界允许重试一次。
 - MUST：普通 PR 最多两轮完整官方 Review，即初审和一次最终复审；第三轮必须由维护者显式记录原因，并先判断是否需要拆分 PR、收窄范围或接受有依据的非阻塞项，不得自动进入下一轮。
 - MUST：官方 Reviewer 对当前 HEAD 给出未发现重大问题的明确文字结论，即视为本轮 Review 通过；不要求 emoji、reaction、固定措辞或额外重复确认。
 - MUST：人工合并仍要求 Review 当前 HEAD；新提交会使旧 Review 失去最终 HEAD 证据资格，但不要求每个中间提交都立即重新 Review，只在实现与修复重新稳定后触发一次。
