@@ -24,15 +24,21 @@
 
 ## 官方 Codex Code Review
 
-基线只接入和治理官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或评论协议。自动唤醒使用官方 `Automatic reviews`；没有自动触发或需要重审时，在 PR 评论使用 `@codex review`。
+基线只接入和治理官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或评论协议。自动唤醒使用官方 `Automatic reviews`；未触发时先按官方说明排查设置和事件，确认没有结果或在途信号后才使用 `@codex review` 人工兜底。
 
-根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应优先检查哪些项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。v1 保持观察模式，不增加 required check，不改变现有 branch protection；官方设置通过真实 PR 验收，中央审计只验证仓库内可稳定读取的规则文件。完整边界见 [官方治理契约](contracts/codex-code-review.md)。
+根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应检查哪些高后果项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。按照[官方建议](https://learn.chatgpt.com/docs/third-party/github#customize-what-codex-reviews)，规则保持两到三条简洁约束，提供安全路径与正反 few-shot，把 lint、格式和机械一致性留给 CI。v1 保持建议模式，不增加 required check，不改变现有 branch protection；完整边界见[官方治理契约](contracts/codex-code-review.md)。
+
+阻塞边界以影响证据为准：只提交由当前 PR 引入、存在当前可达路径并会造成明确正确性、安全、权限、数据、兼容性或发布后果的 P0/P1。若产品仍输出 P2/P3，则默认不阻塞；测试还能增加 fixture、理论加固、未来同时修改规则与测试、lint/措辞/命名或纯重构无需修改，也无需重新 Review。
+
+非平凡 PR 在 Draft 阶段完成实现、测试、内部交叉审查与范围冻结，再让官方 Review 检查稳定变更。一轮 findings 返回后统一分类：阻塞项按根因批量修复；非阻塞项回复处置依据后解决 thread，不修改代码、不自动建 Issue，也不触发新 Review。只有阻塞修复显著改变原风险面时才进行一次定向 Review；若再次出现新的阻塞 P0/P1，先拆分或收窄 PR，而不是自动循环。
+
+官方 Reviewer 给出未发现重大问题的明确文字结论，或全部 finding 已完成阻塞分类与处置，即视为闭环；不追求 emoji、reaction、固定批准口令或零评论。包含多个独立架构边界的大型需求应拆成阶段 PR，跨仓变更先冻结共享协议，只有最终集成 PR 使用 `Closes #xx`。
 
 ## Auto-merge 与分支清理
 
 GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权限者推送后不保证自动关闭。由于官方 Review 当前不是 required check，纳管产品仓库在 v1 暂不允许开启 Auto-merge，也不为单个 PR 启用它。
 
-人工合并前必须确认官方 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功；新提交必须重新 Review。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。
+人工合并前必须确认 required checks 成功、阻塞 finding 已修复或有明确风险接受、全部 review thread 已完成处置，且依赖或发布风险已分类；非阻塞项不要求代码修改或重复审查。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。
 
 分支自动删除不是公共强制项。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用 GitHub 的合并后自动删除；存在未保护且需要复用的 `dev`、`release` 等长期 head 分支时必须关闭。本地 worktree 和分支始终只在确认已合并、工作区干净且没有独有提交后清理。
 
@@ -75,7 +81,7 @@ GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权�
 - `master` branch protection 和 required check。
 - 纳管产品仓库关闭 Auto-merge；分支自动删除按项目真实分支模型配置，不由公共审计强制。人工合并前的 Review/thread/风险分类仍由真实 PR 验收。
 
-中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置和模型审查质量；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR Review 负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
+中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置、模型审查质量、同一 HEAD 请求次数、在途 Review 或审查轮次预算；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR 时间线负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
 
 本地 fixture 自测：
 

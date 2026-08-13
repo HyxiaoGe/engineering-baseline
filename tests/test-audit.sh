@@ -162,15 +162,23 @@ maintenance = (root / "MAINTENANCE.md").read_text()
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
 
-def section_bullets(document, heading):
+def section_content(document, heading):
     lines = document.splitlines()
     start = lines.index(heading) + 1
     section = []
     for line in lines[start:]:
         if line.startswith("## "):
             break
-        section.append(line)
-    return [line for line in section if line.startswith("- ")]
+        section.append(line.rstrip())
+    return "\n".join(section).strip()
+
+
+def section_bullets(document, heading):
+    return [
+        line
+        for line in section_content(document, heading).splitlines()
+        if line.startswith("- ")
+    ]
 
 for marker in (
     "PROJECT_REPLACE",
@@ -189,8 +197,17 @@ assert "不得降低" in contract
 for document in (template, root_agents):
     assert "## Code Review Rules" in document
     assert len(section_bullets(document, "## Code Review Rules")) == 3
-assert "性能" in section_bullets(template, "## Code Review Rules")[0]
-assert "可维护性等风险" in section_bullets(template, "## Code Review Rules")[0]
+    review_rules = section_content(document, "## Code Review Rules")
+    for marker in (
+        "只提交 P0/P1",
+        "当前可达",
+        "P2/P3",
+        "默认不报告",
+        "正例：",
+        "反例：",
+    ):
+        assert marker in review_rules, (marker, document[:40])
+    assert "## 官方 Review 收敛" not in document
 for document in (review_contract, readme, maintenance):
     for marker in (
         "官方 Codex Code Review",
@@ -199,10 +216,8 @@ for document in (review_contract, readme, maintenance):
         "不自建",
     ):
         assert marker in document, (marker, document[:40])
-for document in (root_agents, template, review_contract, readme, maintenance):
+for document in (review_contract, readme, maintenance):
     for marker in (
-        "Review 当前 HEAD",
-        "全部 review thread 已解决",
         "单个 PR",
         "Auto-merge",
         "暂不允许",
@@ -210,13 +225,25 @@ for document in (root_agents, template, review_contract, readme, maintenance):
         assert marker in document, (marker, document[:40])
 for document in (review_contract, readme, maintenance):
     for marker in (
-        "新提交",
         "有写权限",
         "不保证自动关闭",
         "不是 required check",
         "Dependabot",
+        "P0/P1",
+        "P2/P3",
+        "默认不阻塞",
+        "无需重新 Review",
+        "当前可达",
     ):
         assert marker in document, (marker, document[:40])
+for document in (root_agents, template, review_contract, readme, maintenance):
+    for forbidden in (
+        "Review 当前 HEAD",
+        "最终复审",
+        "至少等待 15 分钟",
+        "最多两轮完整",
+    ):
+        assert forbidden not in document, (forbidden, document[:40])
 for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
     assert marker in audit_entrypoint, marker
 assert 'MarkdownIt("commonmark")' in audit_source
