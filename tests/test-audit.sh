@@ -159,14 +159,6 @@ contract = (root / "contracts" / "ci-cd-baseline.md").read_text()
 review_contract = (root / "contracts" / "codex-code-review.md").read_text()
 readme = (root / "README.md").read_text()
 maintenance = (root / "MAINTENANCE.md").read_text()
-review_convergence_good = (
-    root / "tests" / "fixtures" / "review-convergence-policy" / "good.md"
-).read_text()
-review_convergence_failures = {
-    "eager-review.md": 4,
-    "inflight-duplicate.md": 1,
-    "reaction-gate.md": 3,
-}
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
 
@@ -188,50 +180,6 @@ def section_bullets(document, heading):
         if line.startswith("- ")
     ]
 
-canonical_review_section = section_content(
-    review_convergence_good, "## 官方 Review 收敛"
-)
-canonical_review_rules = section_bullets(
-    review_convergence_good, "## 官方 Review 收敛"
-)
-assert len(canonical_review_rules) == 6, canonical_review_rules
-
-
-def has_canonical_review_section(document):
-    return (
-        section_content(document, "## 官方 Review 收敛")
-        == canonical_review_section
-    )
-
-
-prose_conflict = (
-    (
-        root
-        / "tests"
-        / "fixtures"
-        / "review-convergence-policy"
-        / "prose-conflict.md"
-    ).read_text()
-)
-assert not has_canonical_review_section(prose_conflict)
-for fixture_name, expected_changed_index in review_convergence_failures.items():
-    document = (
-        root / "tests" / "fixtures" / "review-convergence-policy" / fixture_name
-    ).read_text()
-    fixture_rules = section_bullets(document, "## 官方 Review 收敛")
-    assert len(fixture_rules) == len(canonical_review_rules), fixture_name
-    changed_indexes = [
-        index
-        for index, (expected, actual) in enumerate(
-            zip(canonical_review_rules, fixture_rules)
-        )
-        if expected != actual
-    ]
-    assert changed_indexes == [expected_changed_index], (
-        fixture_name,
-        changed_indexes,
-    )
-
 for marker in (
     "PROJECT_REPLACE",
     "公共 MUST",
@@ -249,8 +197,17 @@ assert "不得降低" in contract
 for document in (template, root_agents):
     assert "## Code Review Rules" in document
     assert len(section_bullets(document, "## Code Review Rules")) == 3
-assert "性能" in section_bullets(template, "## Code Review Rules")[0]
-assert "可维护性等风险" in section_bullets(template, "## Code Review Rules")[0]
+    review_rules = section_content(document, "## Code Review Rules")
+    for marker in (
+        "只提交 P0/P1",
+        "当前可达",
+        "P2/P3",
+        "默认不报告",
+        "正例：",
+        "反例：",
+    ):
+        assert marker in review_rules, (marker, document[:40])
+    assert "## 官方 Review 收敛" not in document
 for document in (review_contract, readme, maintenance):
     for marker in (
         "官方 Codex Code Review",
@@ -259,30 +216,34 @@ for document in (review_contract, readme, maintenance):
         "不自建",
     ):
         assert marker in document, (marker, document[:40])
-for document in (root_agents, template, review_contract, readme, maintenance):
+for document in (review_contract, readme, maintenance):
     for marker in (
-        "Review 当前 HEAD",
-        "全部 review thread 已解决",
         "单个 PR",
         "Auto-merge",
         "暂不允许",
     ):
         assert marker in document, (marker, document[:40])
-for document in (root_agents, template):
-    assert has_canonical_review_section(document)
 for document in (review_contract, readme, maintenance):
     for marker in (
-        "新提交",
         "有写权限",
         "不保证自动关闭",
         "不是 required check",
         "Dependabot",
-        "至少等待 15 分钟",
-        "明确失败",
-        "允许重试一次",
+        "P0/P1",
+        "P2/P3",
+        "默认不阻塞",
+        "无需重新 Review",
+        "当前可达",
     ):
         assert marker in document, (marker, document[:40])
-    assert "不要求每个中间提交" in document, document[:40]
+for document in (root_agents, template, review_contract, readme, maintenance):
+    for forbidden in (
+        "Review 当前 HEAD",
+        "最终复审",
+        "至少等待 15 分钟",
+        "最多两轮完整",
+    ):
+        assert forbidden not in document, (forbidden, document[:40])
 for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
     assert marker in audit_entrypoint, marker
 assert 'MarkdownIt("commonmark")' in audit_source

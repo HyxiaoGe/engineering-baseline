@@ -25,18 +25,20 @@
 
 ## Code Review Rules
 
-- 只报告可证实且会造成实际影响的问题；尤其关注正确性、性能、回归、安全、隐私、权限、可维护性等风险。
-- 检查数据/API 与跨仓协议兼容、CI/CD 权限边界、失败/回滚路径及测试能否证明这些高风险行为。
-- 把 PR 说明和已有测试视为待验证声明，不重复 lint、格式化或纯风格意见，不要求与当前风险无关的工作；官方 Review 当前不是 required check，且 GitHub 对有写权限者推送新提交不保证自动关闭 Auto-merge；v1 暂不允许对单个 PR 开启 Auto-merge，只在 Review 当前 HEAD、全部 review thread 已解决后人工合并；项目重点：PROJECT_REPLACE_REVIEW_RULES
+### 阻塞边界
 
-## 官方 Review 收敛
+- 只提交 P0/P1 finding：问题必须由当前 PR 引入、存在当前可达的触发路径，并会造成明确的正确性、安全、权限、数据、兼容性或发布后果；评论必须说明触发条件、实际影响和最小安全路径，证据不足则不报告。
+- P2/P3、纯防御性加固、需要未来维护者同时修改规则与测试才成立的假设、测试还可增加更多 fixture、lint/格式/措辞/命名或无当前影响的重构默认不报告，也不得仅因建议有价值就阻塞合并。
 
-- PR 在 Draft 阶段完成实现、测试、内部交叉审查和范围冻结后，再让 Automatic reviews 审查稳定 HEAD；官方 Review 不作为逐提交调试器。
-- 一轮 findings 全部返回后按根因批量修复；同一 HEAD 不得并发请求或向已有有效结果重复请求，Review 正在运行时不得再次评论 `@codex review`。
-- 正常最多两轮完整官方 Review；第三轮必须显式判断拆分、收窄范围或有依据地接受非阻塞项。
-- 当前 HEAD 获得未发现重大问题的明确文字结论即视为通过，不追求 emoji、reaction、固定批准口令或重复确认。
-- 最终 Review 后出现新提交必须重新 Review，但不要求每个中间提交立即重审；全部修复完成并恢复稳定 HEAD 后只触发一次最终复审。
-- PR 转为 Ready 后，Automatic Review 未出现且没有明确失败时至少等待 15 分钟，并在人工评论前立即复查时间线；请求明确失败或超时且没有结果、没有在途信号时允许重试一次，重试仍失败则停止并排查集成。
+### 项目重点
+
+- 检查数据/API 与跨仓协议兼容、CI/CD 权限边界、失败/回滚路径及测试能否证明这些高风险行为；机械一致性继续交给确定性 CI；项目重点：PROJECT_REPLACE_REVIEW_RULES
+
+### Few-shot
+
+正例：新增接口绕过现有授权校验，使普通用户能够读取他人数据；这是当前可达的安全后果，应提交 P1。
+
+反例：还可以增加另一种输入形式的 fixture 或重命名 helper 以提升可维护性，但当前支持路径没有错误；这属于 P2/P3 加固，不提交 finding。
 
 ## CI/CD 公共门禁
 
@@ -51,7 +53,7 @@
 - 发布、手动部署、self-hosted、`dev` Environment 和发布 secret 能力只存在于唯一受控 release workflow；按真实拓扑维护 `.github/release-safety.yml`，不要把模板 job/step ID 当成公共事实。
 - 项目可执行契约测试负责证明 ref/内容 ID、容器内 smoke、回滚命令和实际目标 SHA；固定 `100755` wrapper 内部调用项目测试，`PR container validation` job 名称必须唯一、无依赖且无条件执行，workflow/job/targeted step 不得自定义 shell 或工作目录，targeted step 只以精确单行 `run` 执行 manifest 声明路径。中央审计只验证 manifest 与结构化 YAML 高层约束，不解释任意 shell 控制流。
 - `master` 要求 GitHub Actions 产生的 `PR container validation`，启用 strict、管理员保护和对话解决，禁止 force push 与删除。
-- 官方 Review 尚非当前 HEAD 的 required check 时，仓库保持 `allow_auto_merge=false`；只在 Review 当前 HEAD、全部 review thread 已解决且 required checks 成功后人工合并。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才设置 `delete_branch_on_merge=true`。
+- 官方 Review 不是 required check 时，仓库保持 `allow_auto_merge=false`；只在 required checks 成功、阻塞 finding 已解决或有明确风险处置且 review thread 已完成处置后人工合并。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才设置 `delete_branch_on_merge=true`。
 
 ## 项目命令
 
