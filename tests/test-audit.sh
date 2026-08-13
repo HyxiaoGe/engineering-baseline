@@ -170,20 +170,50 @@ review_convergence_failures = {
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
 
-def section_bullets(document, heading):
+def section_content(document, heading):
     lines = document.splitlines()
     start = lines.index(heading) + 1
     section = []
     for line in lines[start:]:
         if line.startswith("## "):
             break
-        section.append(line)
-    return [line for line in section if line.startswith("- ")]
+        section.append(line.rstrip())
+    return "\n".join(section).strip()
 
+
+def section_bullets(document, heading):
+    return [
+        line
+        for line in section_content(document, heading).splitlines()
+        if line.startswith("- ")
+    ]
+
+canonical_review_section = section_content(
+    review_convergence_good, "## 官方 Review 收敛"
+)
 canonical_review_rules = section_bullets(
     review_convergence_good, "## 官方 Review 收敛"
 )
 assert len(canonical_review_rules) == 6, canonical_review_rules
+
+
+def has_canonical_review_section(document):
+    return (
+        section_content(document, "## 官方 Review 收敛")
+        == canonical_review_section
+    )
+
+
+prose_conflict = (
+    (
+        root
+        / "tests"
+        / "fixtures"
+        / "review-convergence-policy"
+        / "prose-conflict.md"
+    ).read_text()
+)
+assert not has_canonical_review_section(prose_conflict)
 for fixture_name, expected_changed_index in review_convergence_failures.items():
     document = (
         root / "tests" / "fixtures" / "review-convergence-policy" / fixture_name
@@ -239,7 +269,7 @@ for document in (root_agents, template, review_contract, readme, maintenance):
     ):
         assert marker in document, (marker, document[:40])
 for document in (root_agents, template):
-    assert section_bullets(document, "## 官方 Review 收敛") == canonical_review_rules
+    assert has_canonical_review_section(document)
 for document in (review_contract, readme, maintenance):
     for marker in (
         "新提交",
