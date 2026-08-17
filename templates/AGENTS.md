@@ -6,7 +6,8 @@
 
 - 所有回复、代码注释和 Git 提交信息使用中文。
 - Git 提交标题使用 `<type>: <中文描述>`。
-- 提交正文说明背景、改动和验证；AI 协作的提交追加 `Co-Authored-By:` trailer，署名与邮箱取实际使用的助手，不要混用不同厂商的名称与邮箱域。
+- 提交正文说明背景、改动和验证。
+- 不强制 `Co-Authored-By:` trailer：AI 协作的提交由 GitHub App 的 bot 身份体现在 author/committer 上，邮箱无法解析到真实账号的 trailer 不构成协作者，也不要为此编造地址。
 
 ## 规则优先级与覆盖边界
 
