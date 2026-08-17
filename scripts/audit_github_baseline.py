@@ -86,6 +86,9 @@ class RepositorySource:
     local_actions: dict[str, ParsedYaml] = field(default_factory=dict)
     release_manifest: ParsedYaml | None = None
     errors: list[str] = field(default_factory=list)
+    # 判定不了的项：不是漂移，但会让本仓结论不可信。收集而不是抛出，
+    # 这样其余检查照常执行，维护者一次就能看到全部问题。
+    unavailable: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -596,9 +599,19 @@ def build_source(repo: str) -> RepositorySource:
     branch = default_branch()
     if metadata.get("default_branch") != branch:
         source.errors.append(f"[DEFAULT_BRANCH] 仓库 default_branch 必须是 {branch}")
-    if metadata.get("allow_auto_merge") is not False:
+    # GitHub 只在认证身份具备 admin 权限时返回 allow_auto_merge 这组合并策略字段。
+    # 字段缺失说明"看不到"，不等于"开着"；把两者混为一谈会让维护者去关一个本来就
+    # 关着的开关，而真正该修的是令牌权限。
+    auto_merge = metadata.get("allow_auto_merge")
+    if auto_merge is True:
         source.errors.append(
             "[REPOSITORY_MERGE_POLICY] 官方 Review 尚非 required check，仓库必须关闭 Auto-merge"
+        )
+    elif auto_merge is not False:
+        source.unavailable.append(
+            "[API_UNAVAILABLE] 无法判定 Auto-merge：GET repos/"
+            f"{repo} 未返回 allow_auto_merge（实际值 {auto_merge!r}）。"
+            "该字段需要 admin 级读取权限，请确认审计 App 的 Administration 权限已授予该仓库"
         )
 
     workflows = gh_api_paginated(repo, "actions/workflows", "workflows")
@@ -2203,7 +2216,8 @@ def audit_repository(repo: str) -> tuple[list[str], bool]:
                 "[REPO_SECRET_BOUNDARY] repository scope 仍有 secret 名称："
                 + ", ".join(sorted(repository_secret_names))
             )
-        return errors, False
+        # 判定不了的项排在最后，并使本仓结论整体不可信；其余检查已照常执行完毕。
+        return errors + source.unavailable, bool(source.unavailable)
     except AuditUnavailable as error:
         return [f"[API_UNAVAILABLE] {error}"], True
     except AuditError as error:

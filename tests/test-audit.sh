@@ -599,6 +599,8 @@ PY
 
 run_expect_success good
 run_expect_failure repository-auto-merge-enabled "[REPOSITORY_MERGE_POLICY]"
+# 字段缺失是"看不到"而非"开着"：必须报审计未完成，不能伪装成漂移。
+run_expect_unavailable repository-auto-merge-unknown
 run_expect_failure code-review-rules-missing "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-symlink "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-heading-missing "[CODE_REVIEW_RULES]"
