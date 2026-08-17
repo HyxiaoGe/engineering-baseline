@@ -1,0 +1,7 @@
+name: push helper
+description: 项目自定义推送步骤
+runs:
+  using: composite
+  steps:
+    - uses: example/unpinned-action@v1
+      shell: bash

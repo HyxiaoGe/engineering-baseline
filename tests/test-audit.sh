@@ -67,6 +67,62 @@ run_expect_failure_codes() {
   done
 }
 
+run_expect_unavailable() {
+  local fixture_name="$1"
+  local output
+  local status=0
+
+  output="$(PATH="${MOCK_BIN}:${PATH}" AUDIT_FIXTURE_DIR="${FIXTURES_DIR}/${fixture_name}" bash "${AUDIT_SCRIPT}" example/project 2>&1)" || status=$?
+
+  if (( status != 3 )); then
+    echo "FAIL: ${fixture_name} 应以退出码 3 报告审计未完成，实际 ${status}"
+    echo "${output}"
+    failures=$((failures + 1))
+    return
+  fi
+
+  local marker
+  for marker in "ERROR example/project" "[API_UNAVAILABLE]" "未能完成审计"; do
+    if ! grep -Fq "${marker}" <<<"${output}"; then
+      echo "FAIL: ${fixture_name} 缺少 ${marker}"
+      echo "${output}"
+      failures=$((failures + 1))
+    fi
+  done
+}
+
+run_expect_success_on_branch() {
+  local fixture_name="$1"
+  local branch="$2"
+  local output
+
+  if ! output="$(
+    PATH="${MOCK_BIN}:${PATH}" \
+      AUDIT_FIXTURE_DIR="${FIXTURES_DIR}/${fixture_name}" \
+      BASELINE_DEFAULT_BRANCH="${branch}" \
+      bash "${AUDIT_SCRIPT}" example/project 2>&1
+  )"; then
+    echo "FAIL: ${fixture_name} 在 ${branch} 分支下应通过"
+    echo "${output}"
+    failures=$((failures + 1))
+    return
+  fi
+
+  if ! grep -Fq "受保护分支 ${branch}" <<<"${output}"; then
+    echo "FAIL: ${fixture_name} 未回显受保护分支 ${branch}"
+    echo "${output}"
+    failures=$((failures + 1))
+  fi
+}
+
+check_expression_unit_tests() {
+  if ! output="$(cd "${ROOT_DIR}" && python3 -m unittest discover -s tests/unit -t "${ROOT_DIR}" -v 2>&1)"; then
+    echo "FAIL: 表达式解析器单元测试不通过"
+    echo "${output}"
+    failures=$((failures + 1))
+  fi
+}
+
 check_templates() {
   if ! python3 - "${ROOT_DIR}" <<'PY'
 from pathlib import Path
@@ -159,6 +215,7 @@ contract = (root / "contracts" / "ci-cd-baseline.md").read_text()
 review_contract = (root / "contracts" / "codex-code-review.md").read_text()
 readme = (root / "README.md").read_text()
 maintenance = (root / "MAINTENANCE.md").read_text()
+error_codes = (root / "contracts" / "error-codes.md").read_text()
 audit_entrypoint = (root / "scripts" / "audit-github-baseline.sh").read_text()
 audit_source = (root / "scripts" / "audit_github_baseline.py").read_text()
 
@@ -180,83 +237,72 @@ def section_bullets(document, heading):
         if line.startswith("- ")
     ]
 
-for marker in (
-    "PROJECT_REPLACE",
-    "公共 MUST",
-    "子目录 `AGENTS.md`",
-    "独立 Git worktree",
-    "Co-Authored-By: Codex <noreply@anthropic.com>",
-    "allow_auto_merge=false",
-    "临时 PR head 分支",
-    "长期 head 分支受保护",
-):
-    assert marker in template, marker
+# 这里只断言结构性不变量。公共 MUST 的措辞由 contracts/ 单独承载，
+# 不再用中文短语把 README/MAINTENANCE 的散文钉死——那样只能证明某个词出现过。
+assert "PROJECT_REPLACE" in template, "模板必须保留待替换占位符"
 
-assert "AGENTS.md 覆盖边界" in contract
-assert "不得降低" in contract
-for document in (template, root_agents):
-    assert "## Code Review Rules" in document
-    assert len(section_bullets(document, "## Code Review Rules")) == 3
+# 根规则与模板都必须提供官方 Reviewer 能直接消费的规则块。
+for name, document in (("templates/AGENTS.md", template), ("AGENTS.md", root_agents)):
+    assert "## Code Review Rules" in document, name
+    bullets = section_bullets(document, "## Code Review Rules")
+    # 官方建议保持两到三条简洁约束。
+    assert 2 <= len(bullets) <= 3, (name, len(bullets))
     review_rules = section_content(document, "## Code Review Rules")
-    for marker in (
-        "只提交 P0/P1",
-        "当前可达",
-        "P2/P3",
-        "默认不报告",
-        "正例：",
-        "反例：",
-    ):
-        assert marker in review_rules, (marker, document[:40])
-    assert "## 官方 Review 收敛" not in document
-for document in (review_contract, readme, maintenance):
-    for marker in (
-        "官方 Codex Code Review",
-        "Automatic reviews",
-        "@codex review",
-        "不自建",
-    ):
-        assert marker in document, (marker, document[:40])
-for document in (review_contract, readme, maintenance):
-    for marker in (
-        "单个 PR",
-        "Auto-merge",
-        "暂不允许",
-    ):
-        assert marker in document, (marker, document[:40])
-for document in (review_contract, readme, maintenance):
-    for marker in (
-        "有写权限",
-        "不保证自动关闭",
-        "不是 required check",
-        "Dependabot",
-        "P0/P1",
-        "P2/P3",
-        "默认不阻塞",
-        "无需重新 Review",
-        "当前可达",
-    ):
-        assert marker in document, (marker, document[:40])
-for document in (root_agents, template, review_contract, readme, maintenance):
-    for forbidden in (
-        "Review 当前 HEAD",
-        "最终复审",
-        "至少等待 15 分钟",
-        "最多两轮完整",
-    ):
-        assert forbidden not in document, (forbidden, document[:40])
+    assert "正例：" in review_rules and "反例：" in review_rules, name
+
+# 契约文件必须存在且保留其顶层章节骨架。
+for name, document, headings in (
+    (
+        "contracts/ci-cd-baseline.md",
+        contract,
+        ("## 8. 规则漂移", "## 9. AGENTS.md 覆盖边界"),
+    ),
+    (
+        "contracts/codex-code-review.md",
+        review_contract,
+        ("## 4. Finding 处置与收敛", "## 5. v1 合并边界", "## 6. 审计与验收"),
+    ),
+):
+    for heading in headings:
+        assert heading in document, (name, heading)
+
+# README 与 MAINTENANCE 是入口，必须指回契约而不是复述契约。
+for name, document in (("README.md", readme), ("MAINTENANCE.md", maintenance)):
+    assert "contracts/ci-cd-baseline.md" in document, name
+    assert "contracts/codex-code-review.md" in document, name
+    assert "contracts/error-codes.md" in document, name
+
+# 固定 CommonMark parser 是 [CODE_REVIEW_RULES] 的判定基础，不得回退成手写状态机。
 for marker in ("markdown-it-py==3.0.0", "mdurl==0.1.2"):
     assert marker in audit_entrypoint, marker
 assert 'MarkdownIt("commonmark")' in audit_source
 for forbidden in ("markdown_fence", "raw_html_block_start"):
     assert forbidden not in audit_source, forbidden
-for document in (template, review_contract, readme, maintenance):
-    assert "临时 PR head 分支" in document
-    assert "长期 head 分支受保护" in document
+# 分支自动删除按项目分支模型配置，不作为公共审计门禁。
 assert "delete_branch_on_merge" not in audit_source
-print("AGENTS 模板、根规则与官方 Code Review 治理契约通过")
+
+# 错误码是公开接口：实现与参考文档必须双向完全一致。
+import re
+
+emitted = set(re.findall(r"\[([A-Z][A-Z0-9_]+)\]", audit_source))
+documented = set(re.findall(r"`\[([A-Z][A-Z0-9_]+)\]`", error_codes))
+assert emitted == documented, {
+    "实现有但文档缺": sorted(emitted - documented),
+    "文档有但实现缺": sorted(documented - emitted),
+}
+
+# 结论行与退出码同样是接口。
+for token in ("PASS owner/repo", "FAIL owner/repo", "ERROR owner/repo"):
+    assert token in error_codes, token
+for token in ("`0`", "`1`", "`2`", "`3`"):
+    assert token in error_codes, token
+for token in ('print(f"PASS', 'print(f"FAIL', 'print(f"ERROR'):
+    assert token in audit_source, token
+
+print("AGENTS 模板、契约骨架与错误码参考通过")
 PY
   then
-    echo "FAIL: AGENTS 模板或覆盖契约不满足"
+    echo "FAIL: AGENTS 模板、契约骨架或错误码参考不满足"
     failures=$((failures + 1))
   fi
 }
@@ -341,28 +387,22 @@ for marker in (
     assert marker in template_text, marker
 assert 'ci-container-smoke.sh "${PREVIOUS_IMAGE_ID}"' not in template_text
 
-contract_files = [
-    root / "contracts" / "ci-cd-baseline.md",
-    root / "README.md",
-    root / "MAINTENANCE.md",
-    root / "templates" / "AGENTS.md",
-]
-for path in contract_files:
-    text = path.read_text()
-    for marker in (
-        "expand/contract",
-        "禁止自动执行 `alembic downgrade`",
-        "首次部署",
-        "DEPLOY_TARGET_SHA",
-        "rollback_sha",
-        ".github/release-safety.yml",
-    ):
-        assert marker in text, (path, marker)
-
-for path in contract_files[:3]:
-    text = path.read_text()
-    assert "中央审计" in text, path
-    assert "不解释任意 shell" in text or "不声称从原始 shell" in text, path
+# 发布安全的公共 MUST 只以契约为事实源；README/MAINTENANCE 作为入口另行校验链接。
+contract_path = root / "contracts" / "ci-cd-baseline.md"
+contract_text = contract_path.read_text()
+for marker in (
+    "expand/contract",
+    "禁止自动执行 `alembic downgrade`",
+    "首次部署",
+    "DEPLOY_TARGET_SHA",
+    "rollback_sha",
+    ".github/release-safety.yml",
+):
+    assert marker in contract_text, marker
+assert "中央审计" in contract_text
+assert (
+    "不解释任意 shell" in contract_text or "不声称从原始 shell" in contract_text
+)
 
 print("发布安全模板与维护合同通过")
 PY
@@ -452,13 +492,28 @@ assert workflow["permissions"] == {"contents": "read"}
 assert workflow["concurrency"]["cancel-in-progress"] == "false"
 
 jobs = workflow["jobs"]
-assert set(jobs) == {"audit"}
+assert set(jobs) == {"audit", "notify"}
 job = jobs["audit"]
 assert job["runs-on"] == "ubuntu-latest"
 assert job["environment"] == "audit"
 assert job["timeout-minutes"] == "20"
+assert "permissions" not in job, "审计 job 沿用顶层 contents:read"
+
+# 通知与审计必须凭据隔离：审计 job 不碰仓库自身 token，notify job 不碰 App token。
+notify = jobs["notify"]
+assert notify["needs"] == "audit"
+assert notify["if"].startswith("failure()")
+assert "schedule" in notify["if"], "只对无人值守的计划任务开 issue"
+assert notify["permissions"] == {"contents": "read", "issues": "write"}
+assert "environment" not in notify, "notify 不得进入 audit Environment"
+notify_text = yaml.dump(notify)
+assert "app-token" not in notify_text, "notify 不得使用只读审计 App 的令牌"
+assert "BASELINE_AUDIT_APP_PRIVATE_KEY" not in notify_text
 
 steps = job["steps"]
+audit_job_text = yaml.dump(job)
+for forbidden in ("secrets.GITHUB_TOKEN", "github.token", "issues:"):
+    assert forbidden not in audit_job_text, forbidden
 checkout = [step for step in steps if step.get("uses", "").startswith("actions/checkout@")]
 assert len(checkout) == 1
 assert checkout[0]["uses"] == "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
@@ -503,28 +558,30 @@ assert "scripts/audit-maintained-repositories.sh" in commands
 audit_steps = [step for step in steps if "audit-maintained-repositories.sh" in step.get("run", "")]
 assert len(audit_steps) == 1
 assert audit_steps[0]["env"]["GH_TOKEN"] == "${{ steps.app-token.outputs.token }}"
+# 退出码必须原样传出，notify 才能区分漂移与审计未完成。
+assert audit_steps[0]["id"] == "audit"
+assert 'exit "${status}"' in audit_steps[0]["run"]
+assert job["outputs"]["status"] == "${{ steps.audit.outputs.status }}"
 
 workflow_text = workflow_path.read_text()
-assert "github.token" not in workflow_text
 assert "secrets: inherit" not in workflow_text
-for marker in (
-    "GitHub App",
-    "Engineering Baseline Auditor",
-    "Administration: read",
-    "Actions: read",
-    "Contents: read",
-    "Environments: read",
-    "Metadata: read",
-    "Secrets: read",
-    "audit` Environment",
-):
-    assert marker in readme, marker
-    assert marker in maintenance, marker
+
+# App 权限是双向不变量：workflow 实际申请的每一项都必须在维护手册里有据可查。
+requested = {
+    key.removeprefix("permission-").capitalize()
+    for key in token["with"]
+    if key.startswith("permission-")
+}
+for name in requested:
+    assert f"{name}: read" in maintenance, name
+# Metadata 由 GitHub 强制携带，不出现在 with 里，但同样必须被记录。
+assert "Metadata: read" in maintenance
+assert "Engineering Baseline Auditor" in maintenance
+assert "audit` Environment" in maintenance
 
 for forbidden in (
     "templates/drift-audit.yml",
     "PROJECT_REPLACE_BASELINE_SHA",
-    "调用仓库自己的 `GITHUB_TOKEN`",
 ):
     assert forbidden not in readme, forbidden
     assert forbidden not in maintenance, forbidden
@@ -583,6 +640,8 @@ run_expect_failure root-local-action "[ACTION_PIN]"
 run_expect_failure checkout-persist-missing "[CHECKOUT_CREDENTIAL]"
 run_expect_failure checkout-persist-env-fake "[CHECKOUT_CREDENTIAL]"
 run_expect_failure default-branch-main "[DEFAULT_BRANCH]"
+run_expect_success_on_branch main-default-branch main
+run_expect_unavailable api-unavailable
 run_expect_failure unknown-workflow-structure "[WORKFLOW_STRUCTURE]"
 run_expect_success auxiliary-codeql
 run_expect_failure_codes auxiliary-unsafe "[AUX_PR_SECRET]" "[AUX_PR_ENVIRONMENT]" "[AUX_PR_RUNNER]" "[AUX_PR_DEPLOY]"
@@ -650,6 +709,9 @@ run_expect_failure semantic-rollback-extra-false "[ROLLBACK_GUARD]"
 run_expect_failure semantic-rollback-extra-success "[ROLLBACK_GUARD]"
 run_expect_failure semantic-finalize-no-master "[RELEASE_FAILURE_STATE]"
 run_expect_failure semantic-finalize-extra-false "[RELEASE_FAILURE_STATE]"
+run_expect_failure release-local-action-mutable "[ACTION_PIN]"
+run_expect_failure release-local-action-missing "[LOCAL_ACTION]"
+run_expect_failure release-prepare-local-action-deploy "[RELEASE_EVENT]"
 run_expect_failure release-undeclared-self-hosted "[RELEASE_MANIFEST]"
 run_expect_failure release-job-write-permission "[RELEASE_PERMISSION]"
 run_expect_failure release-publish-job-continue-on-error "[RELEASE_FAILURE_STATE]"
@@ -669,6 +731,7 @@ run_expect_failure release-secrets-inherit "[SECRET_ENV_BOUNDARY]"
 run_expect_success dynamic-platform-workflow
 run_expect_failure stale-active-workflow "[WORKFLOW_LIST]"
 run_expect_failure auxiliary-missing-permissions "[AUX_PR_PERMISSION]"
+check_expression_unit_tests
 check_templates
 check_registry_entrypoint
 check_agents_template

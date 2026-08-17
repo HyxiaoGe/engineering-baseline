@@ -1,0 +1,6 @@
+[
+  [
+    "      - name: 校验并选择不可变发布目标",
+    "      - uses: ./ci/actions/prepare-helper\n      - name: 校验并选择不可变发布目标"
+  ]
+]

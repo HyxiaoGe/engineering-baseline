@@ -1,0 +1,6 @@
+[
+  [
+    "      - run: docker push registry.example/project:${GITHUB_SHA}",
+    "      - uses: ./ci/actions/absent\n      - run: docker push registry.example/project:${GITHUB_SHA}"
+  ]
+]

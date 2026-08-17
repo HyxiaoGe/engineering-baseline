@@ -6,13 +6,14 @@
 
 - 所有回复、代码注释和 Git 提交信息使用中文。
 - Git 提交标题使用 `<type>: <中文描述>`。
-- 提交正文说明背景、改动和验证，并包含 `Co-Authored-By: Codex <noreply@anthropic.com>`。
+- 提交正文说明背景、改动和验证。
+- 不强制 `Co-Authored-By:` trailer：AI 协作的提交由 GitHub App 的 bot 身份体现在 author/committer 上，邮箱无法解析到真实账号的 trailer 不构成协作者，也不要为此编造地址。
 
 ## 规则优先级与覆盖边界
 
 - 仓库根目录的本文件补充项目级规则，不复制或降低工程基线中的公共 MUST。
 - 子目录 `AGENTS.md` 只在对应目录树内覆盖实现细节，例如测试命令、模块边界和验收路径。
-- 子目录规则不得降低公共 MUST，包括 PR 权限隔离、master 发布边界、Action SHA、Environment secret、凭据隔离、分支保护及部署身份/健康验收。
+- 子目录规则不得降低公共 MUST，包括 PR 权限隔离、受保护分支发布边界、Action SHA、Environment secret、凭据隔离、分支保护及部署身份/健康验收。
 - 项目确需改变公共 MUST 时，先向 `engineering-baseline` 提交契约变更并通过全部纳管仓库审计；在此之前采用更严格的现有规则。
 
 ## 开发工作流
@@ -43,7 +44,7 @@
 ## CI/CD 公共门禁
 
 - PR 只使用 GitHub 托管 runner，权限为 `contents: read`，不得读取发布 secret、绑定发布 Environment、推送镜像或部署。
-- master 发布 job 和 secret 消费 job 绑定 `dev` Environment；真实部署 job 单独持有部署能力。
+- 受保护分支发布 job 和 secret 消费 job 绑定 `dev` Environment；真实部署 job 单独持有部署能力。
 - 所有外部 Action 锁定完整 40 位 SHA并保留版本注释；checkout 设置 `persist-credentials: false`。
 - Docker 凭据按 run、attempt 和 job 隔离并在 `always()` 中清理。
 - 现有 release workflow 通过 `rollback_sha` 和非空原因处理手动回滚；普通发布和回滚共享 concurrency 与 deploy job，回滚模式跳过 publish 和迁移。
@@ -52,7 +53,7 @@
 - 数据库迁移采用 expand/contract，禁止自动执行 `alembic downgrade`；首次部署无旧镜像时默认 fail-closed，例外必须一次性审批并留证。
 - 发布、手动部署、self-hosted、`dev` Environment 和发布 secret 能力只存在于唯一受控 release workflow；按真实拓扑维护 `.github/release-safety.yml`，不要把模板 job/step ID 当成公共事实。
 - 项目可执行契约测试负责证明 ref/内容 ID、容器内 smoke、回滚命令和实际目标 SHA；固定 `100755` wrapper 内部调用项目测试，`PR container validation` job 名称必须唯一、无依赖且无条件执行，workflow/job/targeted step 不得自定义 shell 或工作目录，targeted step 只以精确单行 `run` 执行 manifest 声明路径。中央审计只验证 manifest 与结构化 YAML 高层约束，不解释任意 shell 控制流。
-- `master` 要求 GitHub Actions 产生的 `PR container validation`，启用 strict、管理员保护和对话解决，禁止 force push 与删除。
+- 受保护分支要求 GitHub Actions 产生的 `PR container validation`，启用 strict、管理员保护和对话解决，禁止 force push 与删除。
 - 官方 Review 不是 required check 时，仓库保持 `allow_auto_merge=false`；只在 required checks 成功、阻塞 finding 已解决或有明确风险处置且 review thread 已完成处置后人工合并。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才设置 `delete_branch_on_merge=true`。
 
 ## 项目命令

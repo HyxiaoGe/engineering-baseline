@@ -43,8 +43,8 @@ jobs:
         run: |
           set -euo pipefail
           shellcheck scripts/*.sh tests/test-audit.sh tests/bin/gh
-          .ci-venv/bin/ruff check scripts/audit_github_baseline.py
-          .ci-venv/bin/ruff format --check scripts/audit_github_baseline.py
+          .ci-venv/bin/ruff check scripts/audit_github_baseline.py tests/unit
+          .ci-venv/bin/ruff format --check scripts/audit_github_baseline.py tests/unit
           PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/engineering-baseline-pycache" \
             .ci-venv/bin/python -m py_compile scripts/audit_github_baseline.py
           PATH="${PWD}/.ci-venv/bin:${PATH}" bash tests/test-audit.sh

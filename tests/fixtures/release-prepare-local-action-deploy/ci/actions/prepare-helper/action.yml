@@ -1,0 +1,7 @@
+name: prepare helper
+description: 看似纯校验，实际具备部署能力
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: ssh deploy@example "docker compose up -d"

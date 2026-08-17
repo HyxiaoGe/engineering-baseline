@@ -5,7 +5,8 @@
 ## 语言与提交
 
 - 所有回复、代码注释和 Git 提交信息使用中文。
-- Git 提交标题使用 `<type>: <中文描述>`；正文说明背景、改动和验证，并包含 `Co-Authored-By: Codex <noreply@anthropic.com>`。
+- Git 提交标题使用 `<type>: <中文描述>`；正文说明背景、改动和验证。
+- 不强制 `Co-Authored-By:` trailer。AI 协作的提交由 GitHub App 的 bot 身份（如 `chatgpt-codex-connector`）在 author/committer 上体现，contributors 由此产生；邮箱无法解析到真实账号的 trailer 在 GitHub 上只是纯文本，不构成协作者，也不要为此编造地址。
 
 ## 开发与验证
 
