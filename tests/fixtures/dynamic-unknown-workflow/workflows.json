@@ -1,0 +1,8 @@
+{
+  "total_count": 3,
+  "workflows": [
+    {"name": "PR validation", "path": ".github/workflows/pr-ci.yml", "state": "active"},
+    {"name": "Master release", "path": ".github/workflows/release.yml", "state": "active"},
+    {"name": "CodeQL", "path": "dynamic/github-code-scanning/codeql", "state": "active"}
+  ]
+}

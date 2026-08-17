@@ -43,6 +43,9 @@ KNOWN_ACTIONS = {
     "docker/login-action": ("dbcb813823bdd20940b903addbd779551569679f", "v4.6.0"),
 }
 ALLOWED_AUX_PERMISSIONS = {"contents": "read", "security-events": "write"}
+# GitHub 平台内建、不存在于仓库中的 workflow：无法读取内容，也无法被项目删除。
+# 只跳过明确已知的路径，未知的 dynamic/ 路径仍然 fail-closed。
+SKIPPED_PLATFORM_WORKFLOWS = frozenset({"dynamic/dependabot/update-graph"})
 HTTP_STATUS_PATTERN = re.compile(r"\(HTTP (\d{3})\)")
 RETRYABLE_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 GH_API_MAX_ATTEMPTS = 4
@@ -83,6 +86,9 @@ class RepositorySource:
     local_actions: dict[str, ParsedYaml] = field(default_factory=dict)
     release_manifest: ParsedYaml | None = None
     errors: list[str] = field(default_factory=list)
+    # 判定不了的项：不是漂移，但会让本仓结论不可信。收集而不是抛出，
+    # 这样其余检查照常执行，维护者一次就能看到全部问题。
+    unavailable: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -593,9 +599,19 @@ def build_source(repo: str) -> RepositorySource:
     branch = default_branch()
     if metadata.get("default_branch") != branch:
         source.errors.append(f"[DEFAULT_BRANCH] 仓库 default_branch 必须是 {branch}")
-    if metadata.get("allow_auto_merge") is not False:
+    # GitHub 只在认证身份具备 admin 权限时返回 allow_auto_merge 这组合并策略字段。
+    # 字段缺失说明"看不到"，不等于"开着"；把两者混为一谈会让维护者去关一个本来就
+    # 关着的开关，而真正该修的是令牌权限。
+    auto_merge = metadata.get("allow_auto_merge")
+    if auto_merge is True:
         source.errors.append(
             "[REPOSITORY_MERGE_POLICY] 官方 Review 尚非 required check，仓库必须关闭 Auto-merge"
+        )
+    elif auto_merge is not False:
+        source.unavailable.append(
+            "[API_UNAVAILABLE] 无法判定 Auto-merge：GET repos/"
+            f"{repo} 未返回 allow_auto_merge（实际值 {auto_merge!r}）。"
+            "该字段需要 admin 级读取权限，请确认审计 App 的 Administration 权限已授予该仓库"
         )
 
     workflows = gh_api_paginated(repo, "actions/workflows", "workflows")
@@ -603,10 +619,17 @@ def build_source(repo: str) -> RepositorySource:
         if workflow.get("state") != "active":
             continue
         path = workflow.get("path")
-        if path == "dynamic/dependabot/update-graph":
+        if path in SKIPPED_PLATFORM_WORKFLOWS:
             continue
         if not isinstance(path, str) or not path.startswith(".github/workflows/"):
-            source.errors.append("[WORKFLOW_LIST] active workflow 缺少合法 path")
+            # 必须回显 name/path：否则维护者拿到这条错误无法判断是哪个 workflow，
+            # 也无法区分"项目放错位置"与"GitHub 平台内建的 dynamic/ workflow"。
+            name = workflow.get("name")
+            identity = f"{name!r} " if isinstance(name, str) else ""
+            source.errors.append(
+                f"[WORKFLOW_LIST] active workflow {identity}的 path 不在 "
+                f".github/workflows/ 下：{path!r}"
+            )
             continue
         try:
             text = repository_content(repo, path)
@@ -2193,7 +2216,8 @@ def audit_repository(repo: str) -> tuple[list[str], bool]:
                 "[REPO_SECRET_BOUNDARY] repository scope 仍有 secret 名称："
                 + ", ".join(sorted(repository_secret_names))
             )
-        return errors, False
+        # 判定不了的项排在最后，并使本仓结论整体不可信；其余检查已照常执行完毕。
+        return errors + source.unavailable, bool(source.unavailable)
     except AuditUnavailable as error:
         return [f"[API_UNAVAILABLE] {error}"], True
     except AuditError as error:

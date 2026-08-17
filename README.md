@@ -61,7 +61,7 @@
 审计只验证可由结构化 YAML 与仓库配置可靠判断的高层约束，逐条 MUST 见[公共契约](contracts/ci-cd-baseline.md)：
 
 - active PR/release workflow 的事件、权限、runner、Environment 与 secret 边界；
-- 受控 release 之外发现任一发布能力即 fail-closed；GitHub 内建的 `dynamic/dependabot/update-graph` 明确跳过，其他 active workflow 读不到即 fail-closed；
+- 受控 release 之外发现任一发布能力即 fail-closed；仅 `SKIPPED_PLATFORM_WORKFLOWS` 中明确列出的 GitHub 内建 workflow 会跳过，其他 `dynamic/` 路径与读不到的 workflow 一律 fail-closed，错误信息回显 name 与 path 供定位；
 - 外部 Action 的 40 位 SHA、版本注释、`docker://` 内容摘要，以及 workflow 与本地 Action 闭包中的全部 `uses:` 引用；
 - `.github/release-safety.yml` 的 schema、语义 job/step 引用、依赖、condition 映射与步骤全序，以及中央独立验证的 publish/deploy/finalize 公共语义；
 - 项目发布安全契约 wrapper 是 mode `100755` 的普通文件，且被唯一的 `PR container validation` job 以单行 `run` 精确调用；

@@ -599,6 +599,8 @@ PY
 
 run_expect_success good
 run_expect_failure repository-auto-merge-enabled "[REPOSITORY_MERGE_POLICY]"
+# 字段缺失是"看不到"而非"开着"：必须报审计未完成，不能伪装成漂移。
+run_expect_unavailable repository-auto-merge-unknown
 run_expect_failure code-review-rules-missing "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-symlink "[CODE_REVIEW_RULES]"
 run_expect_failure code-review-rules-heading-missing "[CODE_REVIEW_RULES]"
@@ -730,6 +732,11 @@ run_expect_failure release-dynamic-secret "[SECRET_ENV_BOUNDARY]"
 run_expect_failure release-secrets-inherit "[SECRET_ENV_BOUNDARY]"
 run_expect_success dynamic-platform-workflow
 run_expect_failure stale-active-workflow "[WORKFLOW_LIST]"
+# 未知的 dynamic/ workflow 仍然 fail-closed，但必须回显 name 与 path 供定位。
+run_expect_failure_codes dynamic-unknown-workflow \
+  "[WORKFLOW_LIST]" \
+  "'CodeQL'" \
+  "'dynamic/github-code-scanning/codeql'"
 run_expect_failure auxiliary-missing-permissions "[AUX_PR_PERMISSION]"
 check_expression_unit_tests
 check_templates

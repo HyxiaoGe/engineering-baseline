@@ -32,6 +32,23 @@
   不回显可能包含 secret 名称的审计输出。
 - 审计输出首行回显基线版本与受保护分支。
 
+### 可观测性
+
+- `[WORKFLOW_LIST]` 的"path 不合法"分支改为回显 workflow name 与 path。此前只输出
+  一句无主语的错误，维护者无法区分"项目把 workflow 放错位置"与"GitHub 平台内建的
+  `dynamic/` workflow 不在仓库里"，也就无从判断该改项目还是改基线。
+- 平台内建跳过列表抽出为 `SKIPPED_PLATFORM_WORKFLOWS`；未知 `dynamic/` 路径保持
+  fail-closed。
+
+### 修复（第二轮 live 审计发现）
+
+- **`[REPOSITORY_MERGE_POLICY]` 的假阳性。** 原判定是
+  `metadata.get("allow_auto_merge") is not False`，字段缺失时 `.get()` 返回 `None`，
+  `None is not False` 成立，于是报告"仓库必须关闭 Auto-merge"。而 GitHub 只在认证
+  身份具备 admin 权限时才返回这组合并策略字段，只读审计 App 很可能拿不到。结果是
+  四个仓库连续数周被误报，维护者被指引去关一个本来就关着的开关。现在区分三种情况：
+  `true` 报漂移、`false` 通过、缺失报 `[API_UNAVAILABLE]` 并指向 App 权限。
+
 ### 测试
 
 - 新增 `tests/unit/`：对表达式解析器、secret 静态可枚举性、`gh api` 重试与分支

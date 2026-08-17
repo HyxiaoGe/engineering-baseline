@@ -25,14 +25,14 @@
 |---|---|
 | `[ARGUMENT]` | 仓库参数不是 `owner/repo`，或 `BASELINE_DEFAULT_BRANCH` 不是合法分支名 |
 | `[API]` | GitHub 响应结构不符合预期，属于可判定的异常 |
-| `[API_UNAVAILABLE]` | 重试后仍无法读取 GitHub：网络、5xx/429 或响应不是合法 JSON |
+| `[API_UNAVAILABLE]` | 重试后仍无法读取 GitHub：网络、5xx/429、响应不是合法 JSON，或 admin 门控字段（如 `allow_auto_merge`）未返回导致无法判定 |
 
 ## 仓库与分支
 
 | 错误码 | 含义 |
 |---|---|
 | `[DEFAULT_BRANCH]` | 仓库 default_branch 不等于基线受保护分支 |
-| `[REPOSITORY_MERGE_POLICY]` | 官方 Review 尚非 required check，仓库必须关闭 Auto-merge |
+| `[REPOSITORY_MERGE_POLICY]` | `allow_auto_merge` 显式为 `true`。字段缺失表示无法判定，走 `[API_UNAVAILABLE]`，不算漂移 |
 | `[BRANCH_PROTECTION]` | strict、PR review、管理员保护、对话解决、force push 或删除保护缺失 |
 | `[REQUIRED_CHECK]` | 受保护分支未要求 `PR container validation` |
 | `[REQUIRED_CHECK_APP]` | required check 未绑定 GitHub Actions app，或 checks 结构无效 |
@@ -41,7 +41,7 @@
 
 | 错误码 | 含义 |
 |---|---|
-| `[WORKFLOW_LIST]` | active workflow 缺少合法 path，或无法从受保护分支读取 |
+| `[WORKFLOW_LIST]` | active workflow 的 path 不在 `.github/workflows/` 下（错误信息回显 name 与 path），或无法从受保护分支读取 |
 | `[WORKFLOW_STRUCTURE]` | workflow 或本地 Action 的 YAML 结构不满足最低约束 |
 | `[ACTION_TREE]` | recursive tree 被截断或条目结构无效，拒绝不完整审计 |
 
