@@ -41,7 +41,7 @@
 
 | 错误码 | 含义 |
 |---|---|
-| `[WORKFLOW_LIST]` | active workflow 缺少合法 path，或无法从受保护分支读取 |
+| `[WORKFLOW_LIST]` | active workflow 的 path 不在 `.github/workflows/` 下（错误信息回显 name 与 path），或无法从受保护分支读取 |
 | `[WORKFLOW_STRUCTURE]` | workflow 或本地 Action 的 YAML 结构不满足最低约束 |
 | `[ACTION_TREE]` | recursive tree 被截断或条目结构无效，拒绝不完整审计 |
 

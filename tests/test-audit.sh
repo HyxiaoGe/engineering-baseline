@@ -730,6 +730,11 @@ run_expect_failure release-dynamic-secret "[SECRET_ENV_BOUNDARY]"
 run_expect_failure release-secrets-inherit "[SECRET_ENV_BOUNDARY]"
 run_expect_success dynamic-platform-workflow
 run_expect_failure stale-active-workflow "[WORKFLOW_LIST]"
+# 未知的 dynamic/ workflow 仍然 fail-closed，但必须回显 name 与 path 供定位。
+run_expect_failure_codes dynamic-unknown-workflow \
+  "[WORKFLOW_LIST]" \
+  "'CodeQL'" \
+  "'dynamic/github-code-scanning/codeql'"
 run_expect_failure auxiliary-missing-permissions "[AUX_PR_PERMISSION]"
 check_expression_unit_tests
 check_templates

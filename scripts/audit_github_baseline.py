@@ -43,6 +43,9 @@ KNOWN_ACTIONS = {
     "docker/login-action": ("dbcb813823bdd20940b903addbd779551569679f", "v4.6.0"),
 }
 ALLOWED_AUX_PERMISSIONS = {"contents": "read", "security-events": "write"}
+# GitHub 平台内建、不存在于仓库中的 workflow：无法读取内容，也无法被项目删除。
+# 只跳过明确已知的路径，未知的 dynamic/ 路径仍然 fail-closed。
+SKIPPED_PLATFORM_WORKFLOWS = frozenset({"dynamic/dependabot/update-graph"})
 HTTP_STATUS_PATTERN = re.compile(r"\(HTTP (\d{3})\)")
 RETRYABLE_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 GH_API_MAX_ATTEMPTS = 4
@@ -603,10 +606,17 @@ def build_source(repo: str) -> RepositorySource:
         if workflow.get("state") != "active":
             continue
         path = workflow.get("path")
-        if path == "dynamic/dependabot/update-graph":
+        if path in SKIPPED_PLATFORM_WORKFLOWS:
             continue
         if not isinstance(path, str) or not path.startswith(".github/workflows/"):
-            source.errors.append("[WORKFLOW_LIST] active workflow 缺少合法 path")
+            # 必须回显 name/path：否则维护者拿到这条错误无法判断是哪个 workflow，
+            # 也无法区分"项目放错位置"与"GitHub 平台内建的 dynamic/ workflow"。
+            name = workflow.get("name")
+            identity = f"{name!r} " if isinstance(name, str) else ""
+            source.errors.append(
+                f"[WORKFLOW_LIST] active workflow {identity}的 path 不在 "
+                f".github/workflows/ 下：{path!r}"
+            )
             continue
         try:
             text = repository_content(repo, path)

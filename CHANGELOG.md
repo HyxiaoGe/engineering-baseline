@@ -32,6 +32,14 @@
   不回显可能包含 secret 名称的审计输出。
 - 审计输出首行回显基线版本与受保护分支。
 
+### 可观测性
+
+- `[WORKFLOW_LIST]` 的"path 不合法"分支改为回显 workflow name 与 path。此前只输出
+  一句无主语的错误，维护者无法区分"项目把 workflow 放错位置"与"GitHub 平台内建的
+  `dynamic/` workflow 不在仓库里"，也就无从判断该改项目还是改基线。
+- 平台内建跳过列表抽出为 `SKIPPED_PLATFORM_WORKFLOWS`；未知 `dynamic/` 路径保持
+  fail-closed。
+
 ### 测试
 
 - 新增 `tests/unit/`：对表达式解析器、secret 静态可枚举性、`gh api` 重试与分支
