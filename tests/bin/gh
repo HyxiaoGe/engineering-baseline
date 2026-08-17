@@ -10,6 +10,17 @@ endpoint="$2"
 case_dir="${AUDIT_FIXTURE_DIR:?必须设置 AUDIT_FIXTURE_DIR}"
 good_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../fixtures/good" && pwd)"
 
+# 模拟 GitHub 服务端持续不可用：审计器应重试后报 ERROR，而不是降级成漂移。
+if [[ -f "${case_dir}/unavailable-endpoint" ]]; then
+  while IFS= read -r pattern || [[ -n "${pattern}" ]]; do
+    [[ -z "${pattern}" ]] && continue
+    if [[ "${endpoint}" == *"${pattern}"* ]]; then
+      echo "gh: Internal Server Error (HTTP 500)" >&2
+      exit 1
+    fi
+  done <"${case_dir}/unavailable-endpoint"
+fi
+
 fixture_file() {
   local relative_path="$1"
   if [[ -f "${case_dir}/${relative_path}" ]]; then
@@ -30,7 +41,7 @@ case "${endpoint}" in
       cat "$(fixture_file workflows.json)"
     fi
     ;;
-  repos/*/branches/master/protection*)
+  repos/*/branches/*/protection*)
     cat "$(fixture_file protection.json)"
     ;;
   repos/*/environments/dev/secrets*page=2*)
@@ -45,7 +56,7 @@ case "${endpoint}" in
     ;;
   repos/*/environments/dev*)
     if [[ -f "${case_dir}/missing-environment" ]]; then
-      echo "环境不存在" >&2
+      echo "gh: Not Found (HTTP 404)" >&2
       exit 1
     fi
     cat "$(fixture_file environment.json)"
@@ -60,7 +71,7 @@ case "${endpoint}" in
       cat "$(fixture_file repo-secrets.json)"
     fi
     ;;
-  repos/*/git/trees/master*)
+  repos/*/git/trees/*)
     cat "$(fixture_file tree.json)"
     ;;
   repos/*/contents/*)

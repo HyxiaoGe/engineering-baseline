@@ -5,7 +5,7 @@
 ## 语言与提交
 
 - 所有回复、代码注释和 Git 提交信息使用中文。
-- Git 提交标题使用 `<type>: <中文描述>`；正文说明背景、改动和验证，并包含 `Co-Authored-By: Codex <noreply@anthropic.com>`。
+- Git 提交标题使用 `<type>: <中文描述>`；正文说明背景、改动和验证，并为 AI 协作的提交追加 `Co-Authored-By:` trailer，署名与邮箱取实际使用的助手，不要混用不同厂商的名称与邮箱域。
 
 ## 开发与验证
 

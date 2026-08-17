@@ -4,43 +4,32 @@
 
 基线仓库自身不会自动修改纳管项目。`scripts/audit-github-baseline.sh` 只通过 GitHub GET API 读取仓库配置、工作流内容以及 secret **名称**，不会读取或输出 secret 值。
 
-当前纳管仓库记录在 `repositories.txt`。公共规则的变更、Action 升级、新项目接入和漂移处理统一从 [MAINTENANCE.md](MAINTENANCE.md) 进入。
+当前纳管仓库记录在 `repositories.txt`，版本变更记录在 [CHANGELOG.md](CHANGELOG.md)。
+
+## 文档导航
+
+公共 MUST 只在 `contracts/` 下定义，本文与维护手册不复述规则，只负责入口与操作步骤。
+
+| 文档 | 作用 |
+|---|---|
+| [contracts/ci-cd-baseline.md](contracts/ci-cd-baseline.md) | CI/CD 公共契约：事件、权限、供应链、发布安全、分支保护、secret 边界 |
+| [contracts/codex-code-review.md](contracts/codex-code-review.md) | 官方 Codex Code Review 治理契约：接入、审查内容、finding 收敛、合并边界 |
+| [contracts/error-codes.md](contracts/error-codes.md) | 审计结论行、退出码与全部稳定错误码 |
+| [MAINTENANCE.md](MAINTENANCE.md) | 日常审计、新项目接入、规则变更、Action 升级、漂移处理 |
 
 ## 接入顺序
 
 1. 从独立 Git worktree 创建变更分支，避免污染长期开发目录。
 2. 复制 `templates/AGENTS.md` 到项目根目录，替换全部 `PROJECT_REPLACE` 项并补齐项目内部规则，保留精确标题 `## Code Review Rules`。
 3. 在官方 GitHub/Codex 设置中启用 Code Review 与 `Automatic reviews`；规则只决定审查重点，不负责触发，人工兜底使用 `@codex review`。
-4. 保持仓库 Auto-merge 关闭；官方 Review 尚非 required check 时不得对单个 PR 开启 Auto-merge。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用合并后自动删除远端分支。
+4. 保持仓库 Auto-merge 关闭；分支自动删除按项目真实分支模型配置。边界见[官方 Codex Code Review 治理契约](contracts/codex-code-review.md) §5。
 5. 复制 `templates/pr-ci.yml`、`templates/release.yml`、`templates/release-safety.yml` 和 `templates/release-safety-contract.sh`；将后两份分别安装为 `.github/release-safety.yml` 与 `.github/scripts/release-safety-contract.sh`，保持 wrapper 为 `100755`，再替换所有 `PROJECT_REPLACE` 项。
 6. 在仓库内实现项目自己的 PR 验证、镜像发布、向前迁移、部署、自动恢复、容器内 smoke、成功后镜像清理和发布收尾脚本；由固定 wrapper 调用项目语言或容器内的可执行契约测试，并让 manifest 声明 wrapper 与 PR 稳定步骤 ID。
 7. 创建 `dev` Environment，把发布所需 secret 移入该 Environment；确认发布成功后清理 repository-scope secrets。
-8. 为 `master` 启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
+8. 为受保护分支启用保护规则，要求 GitHub Actions 产生的 `PR container validation`，并保持 strict。
 9. 在真实 PR 上先让新检查通过，再原子替换旧 required check；不要先删除旧门禁。
 10. 合并后核对运行容器的 image ref、内容 ID 与 `DEPLOY_TARGET_SHA`，并执行容器内部 smoke。
 11. 使用只读审计检查规则漂移。
-
-完整 MUST 和项目扩展点见 [CI/CD 公共契约](contracts/ci-cd-baseline.md) 与 [官方 Codex Code Review 治理契约](contracts/codex-code-review.md)。
-
-## 官方 Codex Code Review
-
-基线只接入和治理官方 Codex Code Review，不自建 Reviewer、GitHub Action、Bot、Webhook 服务、模型调用或评论协议。自动唤醒使用官方 `Automatic reviews`；未触发时先按官方说明排查设置和事件，确认没有结果或在途信号后才使用 `@codex review` 人工兜底。
-
-根 `AGENTS.md` 的 `## Code Review Rules` 只告诉官方 Reviewer 应检查哪些高后果项目风险，不能开启 Automatic reviews，也不能证明自动审查已经触发。按照[官方建议](https://learn.chatgpt.com/docs/third-party/github#customize-what-codex-reviews)，规则保持两到三条简洁约束，提供安全路径与正反 few-shot，把 lint、格式和机械一致性留给 CI。v1 保持建议模式，不增加 required check，不改变现有 branch protection；完整边界见[官方治理契约](contracts/codex-code-review.md)。
-
-阻塞边界以影响证据为准：只提交由当前 PR 引入、存在当前可达路径并会造成明确正确性、安全、权限、数据、兼容性或发布后果的 P0/P1。若产品仍输出 P2/P3，则默认不阻塞；测试还能增加 fixture、理论加固、未来同时修改规则与测试、lint/措辞/命名或纯重构无需修改，也无需重新 Review。
-
-非平凡 PR 在 Draft 阶段完成实现、测试、内部交叉审查与范围冻结，再让官方 Review 检查稳定变更。一轮 findings 返回后统一分类：阻塞项按根因批量修复；非阻塞项回复处置依据后解决 thread，不修改代码、不自动建 Issue，也不触发新 Review。只有阻塞修复显著改变原风险面时才进行一次定向 Review；若再次出现新的阻塞 P0/P1，先拆分或收窄 PR，而不是自动循环。
-
-官方 Reviewer 给出未发现重大问题的明确文字结论，或全部 finding 已完成阻塞分类与处置，即视为闭环；不追求 emoji、reaction、固定批准口令或零评论。包含多个独立架构边界的大型需求应拆成阶段 PR，跨仓变更先冻结共享协议，只有最终集成 PR 使用 `Closes #xx`。
-
-## Auto-merge 与分支清理
-
-GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权限者推送后不保证自动关闭。由于官方 Review 当前不是 required check，纳管产品仓库在 v1 暂不允许开启 Auto-merge，也不为单个 PR 启用它。
-
-人工合并前必须确认 required checks 成功、阻塞 finding 已修复或有明确风险接受、全部 review thread 已完成处置，且依赖或发布风险已分类；非阻塞项不要求代码修改或重复审查。Dependabot PR 不会自动合并；尤其是运行时依赖、跨大版本升级、构建行为变化，以及合并即触发生产发布的仓库，仍需兼容性判断和明确发布授权。
-
-分支自动删除不是公共强制项。只有仓库仅使用临时 PR head 分支，或所有长期 head 分支受保护时，才启用 GitHub 的合并后自动删除；存在未保护且需要复用的 `dev`、`release` 等长期 head 分支时必须关闭。本地 worktree 和分支始终只在确认已合并、工作区干净且没有独有提交后清理。
 
 ## 只读审计
 
@@ -58,51 +47,49 @@ GitHub 只保证无写权限者推送新提交时关闭 Auto-merge；有写权�
 ./scripts/audit-maintained-repositories.sh
 ```
 
-脚本逐仓输出 `PASS` 或带稳定错误码的 `FAIL`，任一仓库漂移时整体退出码为 `1`。参数或本地依赖错误退出码为 `2`。
+脚本逐仓输出 `PASS`、`FAIL` 或 `ERROR`。**`FAIL` 表示基线漂移，`ERROR` 表示审计本身没跑完、结论不可信**；两者的退出码不同，不得把后者当成通过。全部结论行、退出码与错误码见 [contracts/error-codes.md](contracts/error-codes.md)。
 
-发布安全相关错误码包括 `[RELEASE_MANIFEST]`、`[RELEASE_WORKFLOW]`、`[RELEASE_CONCURRENCY]`、`[ROLLBACK_TARGET]`、`[ROLLBACK_GUARD]`、`[ROLLBACK_CAPTURE]` 和 `[RELEASE_FAILURE_STATE]`；它们分别定位项目适配、发布入口、串行边界、不可变目标、路径 guard、步骤顺序和失败状态保持。`[CODE_REVIEW_RULES]` 表示根 `AGENTS.md` 缺失、不是普通文件，或 CommonMark 解析后不存在源码行精确等于 `## Code Review Rules` 的真实 h2；fenced code、HTML block、autolink 与 inline code 等边界由固定 markdown-it-py parser 判定。
+### 可配置项
 
-审计覆盖：
+| 环境变量 | 默认值 | 作用 |
+|---|---|---|
+| `BASELINE_DEFAULT_BRANCH` | `master` | 基线受保护分支名；同时决定 API 读取的 ref、`github.ref` guard 原子与 PR `branches` 判定 |
+| `BASELINE_AUDIT_RETRY_BASE_SECONDS` | `2` | `gh api` 瞬时失败的退避基数，共尝试 4 次 |
 
-- active PR/master workflows 的事件和权限边界；
-- 根 `AGENTS.md` 的普通文件属性与精确 `## Code Review Rules` 标题；
-- 所有 active workflow 的 self-hosted、`dev` Environment、secret、镜像拉取/编排和手动部署能力；受控 release 之外发现任一发布入口即 fail-closed；
-- GitHub 平台内建的 `dynamic/dependabot/update-graph` 会被明确跳过；其他 active workflow 若无法从 `master` 读取则 fail-closed；
-- 固定 PR 检查名与 runner 边界；
-- 外部 Action 的 40 位 SHA 和版本注释；
-- `dev` Environment、active workflow 所引用的 secret 名称边界；
-- `.github/release-safety.yml` 的 schema、语义 job/step 引用、依赖、condition 映射和步骤全序；
-- `rollback_sha`/原因输入、发布与回滚串行锁、Environment、失败状态及成功后清理等可由结构化 YAML 可靠判断的高层约束；
-- 项目发布安全契约 wrapper 是 Git tree 中 mode `100755` 的普通文件；`PR container validation` job 名称在所有 active workflow 中唯一，job 无 `if`、无 `needs`、无有效 `continue-on-error`，workflow/job 不得覆盖默认 `shell` 或 `working-directory`；稳定步骤必须以单行 `run` 精确执行该路径，不带参数、前后命令、管道或兜底逻辑，也不得声明 `if`、`continue-on-error`、`shell` 或 `working-directory`；
-- prepare 存在时，publish、migration 与 deploy 只能共享 manifest 映射 prepare job 的同一个合法 output signal，deploy 还必须让正常与回滚路径共同受 `needs.<prepare>.result == 'success'` 约束；prepare 不存在时只能共享 `github.event.inputs.rollback_sha`，手动回滚分支还必须显式限定 `workflow_dispatch`；
-- release workflow 的所有 job 都不得启用 `continue-on-error`；发布与回滚 concurrency 只能使用常量、允许的 `github.repository/workflow/ref/ref_name`，或仅由这些 context 构成的 `format(...)`；
-- publish/deploy/finalize 的 master 边界、normal/rollback 分支、migration 跳过回滚和 rollback 允许式不能只靠 manifest 自我声明，中央会独立验证公共语义；
-- release 内未声明的特权 job、job 级写权限、动态分域 concurrency 和未锁定 digest 的 `docker://` Action；
-- `master` branch protection 和 required check。
-- 纳管产品仓库关闭 Auto-merge；分支自动删除按项目真实分支模型配置，不由公共审计强制。人工合并前的 Review/thread/风险分类仍由真实 PR 验收。
+### 审计覆盖范围
 
-中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置、模型审查质量、同一 HEAD 请求次数、在途 Review 或审查轮次预算；这些事实分别由项目可执行契约测试、真实发布验收和真实 PR 时间线负责。模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
+审计只验证可由结构化 YAML 与仓库配置可靠判断的高层约束，逐条 MUST 见[公共契约](contracts/ci-cd-baseline.md)：
 
-本地 fixture 自测：
+- active PR/release workflow 的事件、权限、runner、Environment 与 secret 边界；
+- 受控 release 之外发现任一发布能力即 fail-closed；GitHub 内建的 `dynamic/dependabot/update-graph` 明确跳过，其他 active workflow 读不到即 fail-closed；
+- 外部 Action 的 40 位 SHA、版本注释、`docker://` 内容摘要，以及 workflow 与本地 Action 闭包中的全部 `uses:` 引用；
+- `.github/release-safety.yml` 的 schema、语义 job/step 引用、依赖、condition 映射与步骤全序，以及中央独立验证的 publish/deploy/finalize 公共语义；
+- 项目发布安全契约 wrapper 是 mode `100755` 的普通文件，且被唯一的 `PR container validation` job 以单行 `run` 精确调用；
+- `dev` Environment 与 repo/env secret 名称边界；
+- 受保护分支的 branch protection 与 required check；
+- 仓库关闭 Auto-merge；根 `AGENTS.md` 是普通文件且含精确 `## Code Review Rules` h2。
+
+中央审计明确不解释任意 shell 的控制流，也不尝试从注释、`echo`、here-doc、字符串或脚本名证明 ref/内容 ID 比对、容器内 smoke、回滚命令及实际 `DEPLOY_TARGET_SHA`。它也不抓取官方页面或私有接口来判断 Automatic reviews 设置、模型审查质量、在途 Review 或审查轮次预算。这些事实分别由项目可执行契约测试、真实发布验收和真实 PR 时间线负责。
+
+PR workflow 无法触达生产的**结构性**保证来自四条硬约束：`contents: read` 顶层权限、不引用 secret、不绑定 Environment、只用 GitHub 托管 runner。命令关键字扫描（`[PR_DEPLOY]`）是这四条之上的次级网，它可以被项目脚本内部的命令绕过，因此只作为补充信号，不作为主要保证。
+
+模板只是一种可复制 profile，`.github/release-safety.yml` 才是每个项目拓扑的声明式适配层。
+
+### 本地自测
 
 ```bash
 bash tests/test-audit.sh
 ```
 
+包含 fixture 端到端用例、表达式解析器与 API 重试的单元测试（`tests/unit/`），以及模板、契约骨架和错误码参考的一致性校验。
+
 ## 自动漂移审计
 
-自动审计只在基线仓库的 `.github/workflows/baseline-drift-audit.yml` 中运行。纳管项目不复制 workflow，也不保存审计凭据。中央任务通过 `actions/create-github-app-token` 创建短期 GitHub App installation token，并在 Action 输入中把 token 精确限制到 `repositories.txt` 对应的四个仓库。
+自动审计只在基线仓库的 `.github/workflows/baseline-drift-audit.yml` 中运行。纳管项目不复制 workflow，也不保存审计凭据。中央任务通过 `actions/create-github-app-token` 创建短期 GitHub App installation token，并在 Action 输入中把 token 精确限制到 `repositories.txt` 对应的仓库。
 
-GitHub App 名为 `Engineering Baseline Auditor`，只允许安装到 `@HyxiaoGe`。它不订阅 webhook 事件，不授予写权限，只配置以下 repository permissions：
+只读 GitHub App `Engineering Baseline Auditor` 的权限清单与私钥存放规则见 [MAINTENANCE.md](MAINTENANCE.md) 的"发布基线版本"。审计器只处理 secret 名称，GitHub API 和脚本都不会读取 secret 值。
 
-- `Administration: read`：读取 `master` branch protection。
-- `Actions: read`：列举 active workflows。
-- `Contents: read`：读取默认分支 workflow 与本地 Action 内容。
-- `Environments: read`：读取 Environment 和 Environment secret 名称元数据。
-- `Metadata: read`：GitHub App installation token 强制携带的仓库元数据只读权限。
-- `Secrets: read`：读取 repository secret 名称元数据。
-
-基线仓库使用 repository variable `BASELINE_AUDIT_APP_CLIENT_ID` 保存 Client ID，并把私钥作为 `BASELINE_AUDIT_APP_PRIVATE_KEY` 存入 `audit` Environment；workflow 自身只声明 `contents: read`，创建短期令牌时再次显式要求上述五项 `read`。审计器只处理 secret 名称，GitHub API 和脚本都不会读取 secret 值。
+计划任务失败时，独立的 `notify` job 会开或更新一个 issue。该 job 只使用基线仓库自身的 `GITHUB_TOKEN`（`issues: write`），审计 App 保持零写权限；issue 正文只放运行链接，不回显可能包含 secret 名称的审计输出。
 
 接入新项目时必须在同一个基线 PR 中完成三处对齐：
 
@@ -114,8 +101,8 @@ GitHub App 名为 `Engineering Baseline Auditor`，只允许安装到 `@HyxiaoGe
 
 ## 不由模板决定的内容
 
-项目自行决定语言、包管理器、测试命令、job/step ID、是否需要 prepare/finalize、端口、容器名、镜像名、迁移步骤、服务数量、smoke URL/命令和通知实现。模板只是一种 profile，不是中央审计的事实源；项目必须按真实拓扑维护 `.github/release-safety.yml`，并结合真实行为完成验证。
+项目自行决定语言、包管理器、测试命令、job/step ID、是否需要 prepare/finalize、端口、容器名、镜像名、迁移步骤、服务数量、smoke URL/命令和通知实现。项目必须按真实拓扑维护 `.github/release-safety.yml`，并结合真实行为完成验证。
 
-数据库迁移必须采用 expand/contract，禁止自动执行 `alembic downgrade`；镜像恢复只恢复应用运行态，不宣称回滚数据库。捕获的旧 ref 必须是受管 `IMAGE_NAME:<40 位小写 SHA>`，内容 ID 必须是 `sha256:<64 位小写十六进制>`。首次部署没有可捕获的旧镜像时默认 fail-closed，若必须放行，应走独立的一次性审批与可审计例外，完成后立即恢复标准门禁。
+数据库迁移必须采用 expand/contract，禁止自动执行 `alembic downgrade`；镜像恢复只恢复应用运行态，不宣称回滚数据库。捕获的旧 ref 必须是受管 `IMAGE_NAME:<40 位小写 SHA>`，内容 ID 必须是 `sha256:<64 位小写十六进制>`。首次部署没有可捕获的旧镜像时默认 fail-closed。
 
 手动回滚不使用第二份 workflow：在现有 release 的 `workflow_dispatch` 填写 40 位小写 `rollback_sha` 和非空原因。同一 deploy job 使用该值作为 `DEPLOY_TARGET_SHA`，跳过 publish 和迁移，完成身份与容器内 smoke；留空两个输入则仍补跑当前 `GITHUB_SHA`。

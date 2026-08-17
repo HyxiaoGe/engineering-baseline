@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: audit
     timeout-minutes: 20
+    outputs:
+      status: ${{ steps.audit.outputs.status }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -55,9 +57,53 @@ jobs:
             mdurl==0.1.2
 
       - name: Audit maintained repositories
+        id: audit
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          set -euo pipefail
+          # 不使用 set -e：需要保留退出码用于区分 1（漂移）与 3（审计未完成）。
+          set -uo pipefail
+          status=0
           PATH="${PWD}/.audit-venv/bin:${PATH}" \
-            bash scripts/audit-maintained-repositories.sh
+            bash scripts/audit-maintained-repositories.sh || status=$?
+          echo "status=${status}" >>"${GITHUB_OUTPUT}"
+          exit "${status}"
+
+  # 计划任务失败必须主动落地成 issue，否则周任务的红色没人看见。
+  # 通知只使用基线仓库自身的 GITHUB_TOKEN；只读审计 App 保持零写权限。
+  notify:
+    name: Report unattended audit failure
+    needs: audit
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update drift issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUDIT_STATUS: ${{ needs.audit.outputs.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "${AUDIT_STATUS:-}" in
+            1) summary="检测到基线漂移" ;;
+            3) summary="审计未能完成（GitHub API 不可用）" ;;
+            2) summary="审计参数或本地依赖错误" ;;
+            *) summary="审计异常退出" ;;
+          esac
+          title="工程基线周审计失败：${summary}"
+          # 审计输出可能包含 secret 名称等元数据，公开仓库的 issue 里只放运行链接。
+          body=$(printf '%s\n\n%s\n\n%s\n' \
+            "计划任务 \`Engineering baseline drift audit\` 失败：${summary}（退出码 ${AUDIT_STATUS:-未知}）。" \
+            "完整逐仓结论见运行日志：${RUN_URL}" \
+            "退出码含义：1=基线漂移，3=审计未完成结论不可信，2=参数或依赖错误。")
+          existing=$(gh issue list --state open --search "${title} in:title" \
+            --json number --jq '.[0].number // empty')
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --body "${body}"
+          else
+            gh issue create --title "${title}" --body "${body}"
+          fi

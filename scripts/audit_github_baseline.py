@@ -4,10 +4,12 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import PurePosixPath
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Iterable
 from urllib.parse import quote
 
@@ -16,6 +18,10 @@ import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 
+BASELINE_VERSION = "v1.1.0"
+DEFAULT_BRANCH_ENV = "BASELINE_DEFAULT_BRANCH"
+FALLBACK_DEFAULT_BRANCH = "master"
+BRANCH_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 FULL_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 SEMANTIC_ID_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
@@ -37,12 +43,20 @@ KNOWN_ACTIONS = {
     "docker/login-action": ("dbcb813823bdd20940b903addbd779551569679f", "v4.6.0"),
 }
 ALLOWED_AUX_PERMISSIONS = {"contents": "read", "security-events": "write"}
+HTTP_STATUS_PATTERN = re.compile(r"\(HTTP (\d{3})\)")
+RETRYABLE_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+GH_API_MAX_ATTEMPTS = 4
+DEFAULT_RETRY_BASE_SECONDS = 2.0
 CODE_REVIEW_RULES_HEADING = "## Code Review Rules"
 COMMONMARK_PARSER = MarkdownIt("commonmark")
 
 
 class AuditError(RuntimeError):
-    pass
+    """基线漂移或仓库结构不满足公共 MUST。"""
+
+
+class AuditUnavailable(AuditError):
+    """审计本身没能跑完：网络、GitHub 服务端或响应格式问题，结论不可信。"""
 
 
 @dataclass
@@ -83,25 +97,66 @@ class ReleaseSafetyManifest:
     conditions: dict[str, str | None]
 
 
+def default_branch() -> str:
+    """公共基线的受保护分支名。默认 master，可由 BASELINE_DEFAULT_BRANCH 覆盖。"""
+    raw = os.environ.get(DEFAULT_BRANCH_ENV, "").strip()
+    if not raw:
+        return FALLBACK_DEFAULT_BRANCH
+    if not BRANCH_NAME_PATTERN.fullmatch(raw):
+        raise AuditError(f"{DEFAULT_BRANCH_ENV} 不是合法分支名：{raw}")
+    return raw
+
+
+def http_status(stderr: str) -> int | None:
+    match = HTTP_STATUS_PATTERN.search(stderr)
+    return int(match.group(1)) if match else None
+
+
+def retry_base_seconds() -> float:
+    raw = os.environ.get("BASELINE_AUDIT_RETRY_BASE_SECONDS", "")
+    if not raw:
+        return DEFAULT_RETRY_BASE_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_RETRY_BASE_SECONDS
+    return value if value >= 0 else DEFAULT_RETRY_BASE_SECONDS
+
+
+def is_transient(status: int | None) -> bool:
+    """没有 HTTP 状态说明连接层就失败了，同样按可重试处理。"""
+    return status is None or status in RETRYABLE_HTTP_STATUSES
+
+
 def gh_api(repo: str, suffix: str, *, optional: bool = False) -> Any | None:
     endpoint = f"repos/{repo}" if not suffix else f"repos/{repo}/{suffix}"
-    result = subprocess.run(
-        ["gh", "api", endpoint],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if result.returncode != 0:
-        if optional:
+    base = retry_base_seconds()
+    for attempt in range(1, GH_API_MAX_ATTEMPTS + 1):
+        result = subprocess.run(
+            ["gh", "api", endpoint],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            try:
+                return json.loads(result.stdout)
+            except json.JSONDecodeError as error:
+                raise AuditUnavailable(f"GET {endpoint} 返回了无效 JSON") from error
+        stderr = result.stderr.strip()
+        status = http_status(stderr)
+        # 明确的终态状态码（404/403 等）是可判定的事实，optional 调用据此返回 None。
+        if optional and not is_transient(status):
             return None
-        detail = result.stderr.strip().splitlines()
+        if attempt < GH_API_MAX_ATTEMPTS and is_transient(status):
+            time.sleep(base * (2 ** (attempt - 1)))
+            continue
+        detail = stderr.splitlines()
         message = detail[-1] if detail else f"退出码 {result.returncode}"
-        raise AuditError(f"GET {endpoint} 失败：{message}")
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        raise AuditError(f"GET {endpoint} 返回了无效 JSON") from error
+        # 瞬时故障重试用尽后不得降级成"配置缺失"，否则会把假警报当成漂移。
+        raise AuditUnavailable(f"GET {endpoint} 失败：{message}")
+    raise AuditUnavailable(f"GET {endpoint} 重试 {GH_API_MAX_ATTEMPTS} 次后仍失败")
 
 
 def gh_api_paginated(repo: str, suffix: str, list_key: str) -> list[dict[str, Any]]:
@@ -133,7 +188,7 @@ def gh_api_paginated(repo: str, suffix: str, list_key: str) -> list[dict[str, An
 
 
 def repository_content(repo: str, path: str) -> str:
-    payload = gh_api(repo, f"contents/{quote(path, safe='/')}?ref=master")
+    payload = gh_api(repo, f"contents/{quote(path, safe='/')}?ref={default_branch()}")
     if not isinstance(payload, dict) or payload.get("encoding") != "base64":
         raise AuditError(f"无法解码 {path}：Contents API 未返回 base64 内容")
     try:
@@ -410,18 +465,9 @@ def release_capability_signals(
     return signals
 
 
-def release_job_capability_signals(
+def job_local_action_closure(
     source: RepositorySource, document: ParsedYaml, job: dict[str, Any]
-) -> set[str]:
-    signals: set[str] = set()
-    if uses_self_hosted(job):
-        signals.add("self-hosted runner")
-    if "environment" in job:
-        signals.add("Environment")
-    if contains_secret_context(job):
-        signals.add("secret")
-    if value_has_deploy_capability(job):
-        signals.add("deploy command")
+) -> tuple[list[ParsedYaml], list[str]]:
     job_mapping_ids = {id(mapping) for mapping in walk_mappings(job)}
     local_document = ParsedYaml(
         path=document.path,
@@ -434,7 +480,22 @@ def release_job_capability_signals(
         ],
         kind="workflow",
     )
-    closure, closure_errors = local_action_closure(source, local_document)
+    return local_action_closure(source, local_document)
+
+
+def release_job_capability_signals(
+    source: RepositorySource, document: ParsedYaml, job: dict[str, Any]
+) -> set[str]:
+    signals: set[str] = set()
+    if uses_self_hosted(job):
+        signals.add("self-hosted runner")
+    if "environment" in job:
+        signals.add("Environment")
+    if contains_secret_context(job):
+        signals.add("secret")
+    if value_has_deploy_capability(job):
+        signals.add("deploy command")
+    closure, closure_errors = job_local_action_closure(source, document, job)
     if closure_errors:
         signals.add("unresolved local Action")
     if any(contains_secret_context(action.data) for action in closure):
@@ -529,8 +590,9 @@ def build_source(repo: str) -> RepositorySource:
     if not isinstance(metadata, dict):
         raise AuditError("repository metadata 响应无效")
     source = RepositorySource(repo=repo, workflows={}, tree={})
-    if metadata.get("default_branch") != "master":
-        source.errors.append("[DEFAULT_BRANCH] 仓库 default_branch 必须是 master")
+    branch = default_branch()
+    if metadata.get("default_branch") != branch:
+        source.errors.append(f"[DEFAULT_BRANCH] 仓库 default_branch 必须是 {branch}")
     if metadata.get("allow_auto_merge") is not False:
         source.errors.append(
             "[REPOSITORY_MERGE_POLICY] 官方 Review 尚非 required check，仓库必须关闭 Auto-merge"
@@ -550,7 +612,7 @@ def build_source(repo: str) -> RepositorySource:
             text = repository_content(repo, path)
         except AuditError as error:
             source.errors.append(
-                f"[WORKFLOW_LIST] active workflow {path} 无法从 master 读取：{error}"
+                f"[WORKFLOW_LIST] active workflow {path} 无法从 {branch} 读取：{error}"
             )
             continue
         try:
@@ -558,14 +620,14 @@ def build_source(repo: str) -> RepositorySource:
         except AuditError as error:
             source.errors.append(f"[WORKFLOW_STRUCTURE] {error}")
 
-    tree_payload = gh_api(repo, "git/trees/master?recursive=1")
+    tree_payload = gh_api(repo, f"git/trees/{branch}?recursive=1")
     if not isinstance(tree_payload, dict) or not isinstance(
         tree_payload.get("tree"), list
     ):
-        raise AuditError("master recursive tree 响应无效")
+        raise AuditUnavailable(f"{branch} recursive tree 响应无效")
     if tree_payload.get("truncated"):
         source.errors.append(
-            "[ACTION_TREE] master recursive tree 被截断，拒绝不完整审计"
+            f"[ACTION_TREE] {branch} recursive tree 被截断，拒绝不完整审计"
         )
     for item in tree_payload["tree"]:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str):
@@ -596,7 +658,7 @@ def build_source(repo: str) -> RepositorySource:
     manifest_item = source.tree.get(manifest_path)
     if manifest_item is None:
         source.errors.append(
-            f"[RELEASE_MANIFEST] master 缺少声明式适配文件 {manifest_path}"
+            f"[RELEASE_MANIFEST] {branch} 缺少声明式适配文件 {manifest_path}"
         )
     elif manifest_item.get("type") != "blob" or manifest_item.get("mode") == "120000":
         source.errors.append(
@@ -641,13 +703,15 @@ def inspect_code_review_rules(source: RepositorySource) -> list[str]:
     path = "AGENTS.md"
     item = source.tree.get(path)
     if item is None:
-        return [f"[CODE_REVIEW_RULES] master 缺少根级 {path}"]
+        return [f"[CODE_REVIEW_RULES] {default_branch()} 缺少根级 {path}"]
     if item.get("type") != "blob" or item.get("mode") not in {"100644", "100755"}:
         return [f"[CODE_REVIEW_RULES] 根级 {path} 不是普通文件或属于 symlink"]
     try:
         text = repository_content(source.repo, path)
     except AuditError as error:
-        return [f"[CODE_REVIEW_RULES] 无法从 master 读取根级 {path}：{error}"]
+        return [
+            f"[CODE_REVIEW_RULES] 无法从 {default_branch()} 读取根级 {path}：{error}"
+        ]
     if not has_code_review_rules_heading(text):
         return [
             f"[CODE_REVIEW_RULES] 根级 {path} 缺少精确标题 {CODE_REVIEW_RULES_HEADING}"
@@ -734,9 +798,9 @@ def inspect_primary_pr(source: RepositorySource) -> list[str]:
         errors.append(f"[PR_EVENT] {document.path}: pull_request 必须显式配置 branches")
     else:
         branches = pull_request.get("branches")
-        if branches != ["master"] or "branches-ignore" in pull_request:
+        if branches != [default_branch()] or "branches-ignore" in pull_request:
             errors.append(
-                f"[PR_EVENT] {document.path}: PR branches 必须精确等于 [master]"
+                f"[PR_EVENT] {document.path}: PR branches 必须精确等于 [{default_branch()}]"
             )
     if permission_errors(document.data.get("permissions"), auxiliary=False):
         errors.append(
@@ -768,7 +832,8 @@ def inspect_primary_pr(source: RepositorySource) -> list[str]:
         errors.append(
             f"[PR_DEPLOY] {document.path}: 主 PR workflow 或其本地 Action 含部署能力"
         )
-    errors.extend(inspect_action_references(closure))
+    # 解析出的本地 Action 统一由 audit_repository 在全部 inspect 之后做引用检查，
+    # 避免同一个 Action 被多个 workflow 引用时重复报告。
     return errors
 
 
@@ -815,13 +880,12 @@ def inspect_auxiliary_pr(source: RepositorySource) -> list[str]:
             errors.append(
                 f"[AUX_PR_DEPLOY] {document.path}: 辅助 PR workflow 含部署能力"
             )
-        errors.extend(inspect_action_references(closure))
     return errors
 
 
-def exact_master_push(events: dict[str, Any]) -> bool:
+def exact_default_branch_push(events: dict[str, Any]) -> bool:
     push = events.get("push")
-    return isinstance(push, dict) and push.get("branches") == ["master"]
+    return isinstance(push, dict) and push.get("branches") == [default_branch()]
 
 
 def needs_ids(job: dict[str, Any]) -> set[str]:
@@ -927,12 +991,9 @@ def top_level_conjuncts(expression: str) -> list[str]:
 
 
 def is_master_guard_atom(expression: str) -> bool:
-    return bool(
-        re.fullmatch(
-            r"github\.ref\s*==\s*(['\"])refs/heads/master\1",
-            strip_outer_parentheses(expression),
-        )
-    )
+    """受保护分支 guard 原子，例如 github.ref == 'refs/heads/master'。"""
+    pattern = rf"github\.ref\s*==\s*(['\"])refs/heads/{re.escape(default_branch())}\1"
+    return bool(re.fullmatch(pattern, strip_outer_parentheses(expression)))
 
 
 def is_function_atom(expression: str, name: str) -> bool:
@@ -1800,6 +1861,11 @@ def inspect_release(source: RepositorySource) -> tuple[list[str], set[str]]:
         ], set()
     errors.extend(inspect_contract_test(source, manifest))
 
+    # 受控 release 是权限最高的 workflow：它引用的本地 Action 必须与 PR 侧一样被解析，
+    # 否则 .github/actions/** 之外的本地 Action 会绕过供应链锁定与 prepare 纯净性判断。
+    _, release_closure_errors = local_action_closure(source, document)
+    errors.extend(release_closure_errors)
+
     for other in source.workflows.values():
         if other.path == document.path:
             continue
@@ -1812,12 +1878,12 @@ def inspect_release(source: RepositorySource) -> tuple[list[str], set[str]]:
 
     events = event_map(document)
     if (
-        not exact_master_push(events)
+        not exact_default_branch_push(events)
         or not set(events).issubset({"push", "workflow_dispatch"})
         or "workflow_dispatch" not in events
     ):
         errors.append(
-            f"[RELEASE_EVENT] {document.path}: 发布事件必须精确包含 master push 与 workflow_dispatch"
+            f"[RELEASE_EVENT] {document.path}: 发布事件必须精确包含 {default_branch()} push 与 workflow_dispatch"
         )
     errors.extend(release_input_errors(document))
     concurrency = document.data.get("concurrency")
@@ -1935,12 +2001,17 @@ def inspect_release(source: RepositorySource) -> tuple[list[str], set[str]]:
         if not isinstance(prepare, dict):
             return errors, referenced
         expected_prepare_guard = manifest.conditions["prepare"] or ""
+        prepare_closure, prepare_closure_errors = job_local_action_closure(
+            source, document, prepare
+        )
+        prepare_documents = [prepare, *(action.data for action in prepare_closure)]
         if (
             normalized_condition(prepare.get("if")) != expected_prepare_guard
             or "environment" in prepare
             or prepare.get("runs-on") != "ubuntu-latest"
-            or contains_secret_context(prepare)
-            or value_has_deploy_capability(prepare)
+            or prepare_closure_errors
+            or any(contains_secret_context(item) for item in prepare_documents)
+            or any(value_has_deploy_capability(item) for item in prepare_documents)
         ):
             errors.append(
                 f"[RELEASE_EVENT] {document.path}: prepare 必须是 manifest 声明的 GitHub-hosted 纯校验 job"
@@ -2022,7 +2093,7 @@ def inspect_release(source: RepositorySource) -> tuple[list[str], set[str]]:
 
 def inspect_protection(payload: Any) -> list[str]:
     if not isinstance(payload, dict):
-        return ["[BRANCH_PROTECTION] master protection 响应无效"]
+        return [f"[BRANCH_PROTECTION] {default_branch()} protection 响应无效"]
     errors: list[str] = []
     required = payload.get("required_status_checks")
     if not isinstance(required, dict):
@@ -2040,7 +2111,9 @@ def inspect_protection(payload: Any) -> list[str]:
             not isinstance(legacy_contexts, list)
             or "PR container validation" not in legacy_contexts
         ):
-            errors.append("[REQUIRED_CHECK] master 未要求 PR container validation")
+            errors.append(
+                f"[REQUIRED_CHECK] {default_branch()} 未要求 PR container validation"
+            )
         errors.append("[REQUIRED_CHECK_APP] checks 中缺少 PR container validation")
     elif not any(
         isinstance(check, dict)
@@ -2052,17 +2125,19 @@ def inspect_protection(payload: Any) -> list[str]:
             "[REQUIRED_CHECK_APP] PR container validation 必须绑定 app_id=15368"
         )
     if payload.get("required_pull_request_reviews") is None:
-        errors.append("[BRANCH_PROTECTION] master 未要求 Pull Request review")
+        errors.append(
+            f"[BRANCH_PROTECTION] {default_branch()} 未要求 Pull Request review"
+        )
     if (payload.get("enforce_admins") or {}).get("enabled") is not True:
-        errors.append("[BRANCH_PROTECTION] master 未对管理员执行保护")
+        errors.append(f"[BRANCH_PROTECTION] {default_branch()} 未对管理员执行保护")
     if (payload.get("required_conversation_resolution") or {}).get(
         "enabled"
     ) is not True:
-        errors.append("[BRANCH_PROTECTION] master 未要求解决对话")
+        errors.append(f"[BRANCH_PROTECTION] {default_branch()} 未要求解决对话")
     if (payload.get("allow_force_pushes") or {}).get("enabled") is not False:
-        errors.append("[BRANCH_PROTECTION] master 仍允许 force push")
+        errors.append(f"[BRANCH_PROTECTION] {default_branch()} 仍允许 force push")
     if (payload.get("allow_deletions") or {}).get("enabled") is not False:
-        errors.append("[BRANCH_PROTECTION] master 仍允许删除")
+        errors.append(f"[BRANCH_PROTECTION] {default_branch()} 仍允许删除")
     return errors
 
 
@@ -2076,20 +2151,25 @@ def secret_names(items: list[dict[str, Any]]) -> set[str]:
     return names
 
 
-def audit_repository(repo: str) -> list[str]:
+def audit_repository(repo: str) -> tuple[list[str], bool]:
+    """返回 (错误列表, 审计是否因基础设施原因未能跑完)。"""
     try:
         source = build_source(repo)
         errors = list(source.errors)
         if not source.workflows:
             errors.append("[WORKFLOW_LIST] 未找到可解析的 active workflow")
-        errors.extend(inspect_action_references(source.workflows.values()))
-        errors.extend(inspect_action_references(source.local_actions.values()))
         errors.extend(inspect_code_review_rules(source))
         errors.extend(inspect_primary_pr(source))
         errors.extend(inspect_auxiliary_pr(source))
         release_errors, referenced_secrets = inspect_release(source)
         errors.extend(release_errors)
-        errors.extend(inspect_protection(gh_api(repo, "branches/master/protection")))
+        # 必须在全部 inspect 之后执行：本地 Action 只有被引用时才会惰性解析进
+        # source.local_actions，提前检查会漏掉 .github/actions/** 之外的 Action。
+        errors.extend(inspect_action_references(source.workflows.values()))
+        errors.extend(inspect_action_references(source.local_actions.values()))
+        errors.extend(
+            inspect_protection(gh_api(repo, f"branches/{default_branch()}/protection"))
+        )
 
         environment = gh_api(repo, "environments/dev", optional=True)
         if environment is None:
@@ -2113,9 +2193,11 @@ def audit_repository(repo: str) -> list[str]:
                 "[REPO_SECRET_BOUNDARY] repository scope 仍有 secret 名称："
                 + ", ".join(sorted(repository_secret_names))
             )
-        return errors
+        return errors, False
+    except AuditUnavailable as error:
+        return [f"[API_UNAVAILABLE] {error}"], True
     except AuditError as error:
-        return [f"[API] {error}"]
+        return [f"[API] {error}"], False
 
 
 def main(repositories: list[str]) -> int:
@@ -2125,18 +2207,33 @@ def main(repositories: list[str]) -> int:
             print(f"FAIL {repo}")
             print("  [ARGUMENT] 仓库必须使用 owner/repo 格式")
         return 2
+    try:
+        branch = default_branch()
+    except AuditError as error:
+        print(f"FAIL -\n  [ARGUMENT] {error}")
+        return 2
+    print(f"engineering-baseline {BASELINE_VERSION} / 受保护分支 {branch}")
     failed = 0
+    unavailable = 0
     for repo in repositories:
-        errors = audit_repository(repo)
-        if errors:
+        errors, incomplete = audit_repository(repo)
+        if incomplete:
+            unavailable += 1
+            print(f"ERROR {repo}")
+        elif errors:
             failed += 1
             print(f"FAIL {repo}")
-            for error in errors:
-                print(f"  {error}")
         else:
             print(f"PASS {repo}")
-    print(f"审计完成：{len(repositories) - failed} 个通过，{failed} 个失败")
+        for error in errors:
+            print(f"  {error}")
+    passed = len(repositories) - failed - unavailable
+    print(f"审计完成：{passed} 个通过，{failed} 个漂移，{unavailable} 个未能完成审计")
+    # 未跑完的审计不能被当成通过，也不能和真实漂移共用同一个退出码。
+    if unavailable:
+        return 3
     return 1 if failed else 0
 
 
-raise SystemExit(main(sys.argv[1:]))
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

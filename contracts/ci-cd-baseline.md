@@ -14,6 +14,7 @@
 - MUST：PR job 只使用 GitHub 托管 `ubuntu-latest`，固定 job 显示名为 `PR container validation`。
 - MUST：顶层权限为 `contents: read`，不得授予任何 write 权限。
 - MUST：不得引用 secrets、绑定 Environment、使用 self-hosted runner、登录或推送镜像、执行部署。
+- 说明：PR 无法触达生产的结构性保证来自顶层 `contents: read`、无 secret、无 Environment、GitHub 托管 runner 四条硬约束；命令关键字扫描（`[PR_DEPLOY]`）是其上的次级网，可被项目脚本内部命令绕过，不作为主要保证。
 - MUST：执行足以证明可合并性的完整测试和容器构建，但不发布构建产物。
 - 项目扩展点：安装、lint、测试、构建命令和临时镜像名。
 
@@ -39,6 +40,7 @@
 - MUST：SHA 后保留可读版本注释，例如 `# v6`、`# v4.6.0`。
 - MUST：每个 `actions/checkout` 步骤都在自身 `with` mapping 中显式设置 `persist-credentials: false`；顶层 `env` 或 `run` 字符串不能替代该设置。
 - MUST：本地 Action 可以用相对路径，但其 manifest 中的外部 Action 同样受本规则约束。
+- MUST：本地 Action 的解析范围覆盖全部 active workflow，包含受控 release workflow 自身及其声明 job；`.github/actions/**` 之外的本地 Action 不得因解析时机而绕过锁定检查。
 - MUST：`docker://` Action 只接受 `@sha256:` 加 64 位小写十六进制内容摘要，mutable tag 或未锁定引用一律拒绝。
 - 项目扩展点：选择哪些官方/第三方 Action；升级版本时同时更新 SHA、版本注释和契约测试。
 
@@ -58,6 +60,7 @@
 ## 6. master 分支保护
 
 - MUST：required status checks 启用 strict，并要求 GitHub Actions app 产生的 `PR container validation`。
+- MUST：受保护分支名由基线配置项 `BASELINE_DEFAULT_BRANCH` 决定（默认 `master`），并同时约束仓库 default_branch、审计读取的 ref、`github.ref` guard 原子与 PR `branches`；同一次审计的所有仓库共用一个值。
 - MUST：要求通过 Pull Request、对管理员执行保护、要求解决对话、禁止 force push、禁止删除 `master`。
 - MUST：迁移检查名时先让新检查在真实 PR 成功，再原子替换旧 required check。
 - MUST：官方 Review 尚不能作为当前 HEAD 的 required check 时，仓库关闭 Auto-merge。人工合并边界由官方 Review 治理契约决定，不能仅凭 CI 通过合并；分支自动删除按项目分支模型配置，不作为 CI/CD 公共门禁。
@@ -75,6 +78,7 @@
 ## 8. 规则漂移
 
 - MUST：定期或在基线变更后运行只读审计；任一公共 MUST 漂移都返回非零退出码。
+- MUST：审计必须区分"基线漂移"与"审计未能完成"。GitHub 5xx/429/连接失败在有限重试后报告 `ERROR` 与退出码 `3`，不得降级成漂移，也不得当成通过；结论行、退出码与全部稳定错误码以 `contracts/error-codes.md` 为事实源，实现与该文件必须双向一致。
 - MUST：审计 active workflows、`.github/actions`、live `master` protection、`dev` Environment 以及 repo/env secret 名称边界。
 - MUST：逐一分类所有 active workflow；任何包含 self-hosted runner、`dev` Environment、secret、镜像拉取/编排/部署命令或人工部署入口的发布能力，只能存在于唯一受控 release workflow。
 - MUST：每个项目维护 `.github/release-safety.yml`，声明受控 workflow、可选 prepare/finalize、publish/deploy、target/capture/migration/candidate/verify/rollback/cleanup/failure 语义角色、needs/condition 映射、项目契约测试文件和主 PR 稳定 step ID。模板只是一种 profile，不是事实源。
